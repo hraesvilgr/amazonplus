@@ -1,4 +1,4 @@
-/* Disenshittify Amazon — injected styles. Everything is prefixed dsa- to stay out of Amazon's way. */
+/* AmazonPlus — injected styles. Everything is prefixed dsa- to stay out of Amazon's way. */
 
 /* ---------- toggle ---------- */
 #dsa-toggle {
@@ -19,9 +19,9 @@
   z-index: 300;
   margin: 0;
   max-height: calc(100vh - 16px);
-  overflow-y: auto;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
+#dsa-toggle.dsa-float.dsa-float-tall { overflow-y: auto; }
 
 .dsa-switch {
   display: flex;
@@ -106,7 +106,7 @@
   display: inline-block;
   padding: 2px 8px;
   border-radius: 11px;
-  background: var(--dsa-edge);
+  background: var(--dsa-pill, var(--dsa-edge));
   color: #fff;
   font-weight: 700;
   white-space: nowrap;
@@ -224,7 +224,7 @@
 .dsa-ph-pill {
   padding: 2px 9px;
   border-radius: 11px;
-  background: var(--dsa-edge);
+  background: var(--dsa-pill, var(--dsa-edge));
   color: #fff;
   font-weight: 700;
 }
@@ -275,3 +275,106 @@
 .dsa-scan:disabled { cursor: progress; opacity: 0.8; }
 .dsa-scan-note { margin-top: 4px; font-size: 11px; color: #565959; }
 .dsa-scan-note:empty { display: none; }
+
+/* ---------- Amazon's dark mode (html.dsa-dark, set when the page behind the results is dark) ---------- */
+/* Every text colour below is at least 4.5:1 on its background. */
+.dsa-dark #dsa-toggle { background: #1d2421; border-color: #6a9f3a; color: #e3e6e6; }
+.dsa-dark #dsa-toggle.dsa-float { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }
+.dsa-dark .dsa-track { background: #5f6363; }
+.dsa-dark .dsa-status,
+.dsa-dark .dsa-scan-note,
+.dsa-dark .dsa-muted { color: #b9bdbd; }
+.dsa-dark .dsa-manage,
+.dsa-dark .dsa-ph-details > summary { color: #4fc3e0; }
+.dsa-dark .dsa-scan { background: #0b3a52; color: #e3e6e6; }
+.dsa-dark .dsa-scan:hover:not(:disabled) { background: #0e4a68; }
+.dsa-dark .dsa-badge-body { background: #22272a; color: #e3e6e6; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6); }
+.dsa-dark .dsa-badge li.dsa-good,
+.dsa-dark .dsa-ph-list li.dsa-good,
+.dsa-dark .dsa-ph-delta.dsa-up,
+.dsa-dark .dsa-delta.dsa-up { color: #86e08f; }
+.dsa-dark .dsa-badge li.dsa-bad,
+.dsa-dark .dsa-ph-list li.dsa-bad,
+.dsa-dark .dsa-ph-delta.dsa-down,
+.dsa-dark .dsa-delta.dsa-down { color: #ff9a8f; }
+.dsa-dark .dsa-ph-delta.dsa-same,
+.dsa-dark .dsa-delta.dsa-same { color: #b9bdbd; }
+.dsa-dark .dsa-brandname { color: #e3e6e6; }
+.dsa-dark .dsa-brandrow { border-top-color: rgba(255, 255, 255, 0.15); }
+.dsa-dark .dsa-pitem { border-bottom-color: #3a4044; }
+.dsa-dark .dsa-btn { background: #2b3134; border-color: #5f6363; color: #e3e6e6; }
+.dsa-dark .dsa-btn:hover { background: #363d41; }
+.dsa-dark .dsa-btn.dsa-trust { border-color: #4caf50; color: #86e08f; }
+.dsa-dark .dsa-btn.dsa-block { border-color: #e57373; color: #ff9a8f; }
+.dsa-dark .dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }
+.dsa-dark .dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }
+.dsa-dark .dsa-product { color: #e3e6e6; }
+.dsa-dark .dsa-product-error { --dsa-bg: #2b3134; --dsa-edge: #8a9093; --dsa-ink: #b9bdbd; }
+
+/* ---------- tile view (html.dsa-tiles) ----------
+   Amazon's row-by-row list becomes a grid of cards: each result's picture-left/text-right row is
+   stacked into a column, and everything else in the results area (headings, pagination) spans the
+   full width. Amazon's own tile searches come through unchanged in shape. */
+html.dsa-tiles .s-main-slot {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;
+  grid-template-rows: none !important;
+  grid-auto-flow: row !important;
+  grid-auto-columns: auto !important;
+  gap: 12px 10px;
+  align-items: stretch;
+  margin: 0 !important;
+}
+@media (max-width: 600px) {
+  html.dsa-tiles .s-main-slot { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; gap: 8px 6px; }
+}
+html.dsa-tiles .s-main-slot > * { grid-column: 1 / -1; min-width: 0; }
+html.dsa-tiles .s-main-slot > div[data-component-type="s-search-result"] {
+  grid-column: auto;
+  width: auto !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+html.dsa-tiles .s-main-slot > div[data-component-type="s-search-result"] > .sg-col-inner { height: 100%; padding: 0 !important; margin: 0 !important; }
+html.dsa-tiles div[data-component-type="s-search-result"] .s-widget-container,
+html.dsa-tiles div[data-component-type="s-search-result"] .s-card-container,
+html.dsa-tiles div[data-component-type="s-search-result"] .s-card-container > .a-section { height: 100%; box-sizing: border-box; }
+html.dsa-tiles div[data-component-type="s-search-result"] .puisg-row { flex-direction: column; flex-wrap: nowrap; margin: 0 !important; width: 100% !important; }
+html.dsa-tiles div[data-component-type="s-search-result"] .puisg-col {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  flex: none !important;
+  padding: 0 6px !important;
+  display: block !important;
+}
+/* Every tile's photo gets the same box, and Amazon's "Best Seller" / "Overall Pick" label sits over
+   its top-left corner instead of above it, so titles and prices line up across a row. */
+html.dsa-tiles div[data-component-type="s-search-result"] .puisg-col-inner { position: relative; }
+html.dsa-tiles div[data-component-type="s-search-result"] .s-list-status-badge-container,
+html.dsa-tiles div[data-component-type="s-search-result"] .puis-status-badge-container {
+  position: absolute !important;
+  top: 4px;
+  left: 0;
+  z-index: 3;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+}
+html.dsa-tiles div[data-component-type="s-search-result"] .s-product-image-container {
+  height: 206px !important;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 26px 0 0 !important;
+}
+html.dsa-tiles div[data-component-type="s-search-result"] .s-product-image-container img.s-image {
+  max-height: 180px !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0 auto;
+  display: block;
+}
+html.dsa-tiles div[data-component-type="s-search-result"] h2 { font-size: 14px !important; line-height: 1.35 !important; }
+html.dsa-tiles div[data-component-type="s-search-result"] [data-cy="title-recipe"] { padding-right: 0 !important; }
+html.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4px 0 6px; }

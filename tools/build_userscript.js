@@ -16,7 +16,7 @@ const js = ["src/config.js", "src/brands.js", "src/bigrams.js", "src/scorer.js",
   .replace("var DSA_BRANDS =", "globalThis.DSA_BRANDS =");
 
 const header = `// ==UserScript==
-// @name         Disenshittify Amazon
+// @name         AmazonPlus
 // @namespace    disenshittify-amazon
 // @version      ${manifest.version}
 // @description  ${manifest.description}

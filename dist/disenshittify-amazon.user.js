@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Disenshittify Amazon
+// @name         AmazonPlus
 // @namespace    disenshittify-amazon
-// @version      0.9.3
+// @version      0.10.3
 // @description  Rates Amazon search results by trustworthiness, tints them green to red, and sorts the junk to the bottom.
 // @match        https://www.amazon.com/s*
 // @match        https://amazon.com/s*
@@ -26,19 +26,22 @@
 (function () {
   const style = document.createElement("style");
   style.id = "dsa-styles";
-  style.textContent = "/* Disenshittify Amazon \u2014 injected styles. Everything is prefixed dsa- to stay out of Amazon's way. */\n\n/* ---------- toggle ---------- */\n#dsa-toggle {\n  box-sizing: border-box;\n  margin: 0 0 14px;\n  padding: 10px 12px;\n  border: 2px solid #8bc34a;\n  border-radius: 10px;\n  background: #fbfdf7;\n  font-family: \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n#dsa-toggle.dsa-inline { max-width: 360px; margin: 8px 0 12px; }\n/* Floating at the top of the window once its place in the column has scrolled away */\n#dsa-toggle.dsa-float {\n  position: fixed;\n  top: 8px;\n  z-index: 300;\n  margin: 0;\n  max-height: calc(100vh - 16px);\n  overflow-y: auto;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);\n}\n\n.dsa-switch {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  cursor: pointer;\n  user-select: none;\n}\n.dsa-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }\n.dsa-track {\n  position: relative;\n  flex: none;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  background: #b9bdbd;\n  transition: background 0.15s;\n}\n.dsa-thumb {\n  position: absolute;\n  top: 3px;\n  left: 3px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  background: #fff;\n  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);\n  transition: transform 0.15s;\n}\n.dsa-switch input:checked + .dsa-track { background: #2e7d32; }\n.dsa-switch input:checked + .dsa-track .dsa-thumb { transform: translateX(18px); }\n.dsa-switch input:focus-visible + .dsa-track { outline: 2px solid #007185; outline-offset: 2px; }\n.dsa-label { font-size: 16px; font-weight: 700; }\n.dsa-unit { margin-bottom: 6px; }\n\n.dsa-status { margin: 6px 0 0 50px; font-size: 12px; color: #565959; }\n.dsa-legend { margin: 8px 0 0 50px; }\n.dsa-legend span {\n  display: block;\n  height: 6px;\n  border-radius: 3px;\n  background: linear-gradient(90deg, hsl(120 70% 40%), hsl(60 70% 45%), hsl(0 70% 45%));\n}\n\n/* ---------- rated cards ---------- */\n.dsa-paint {\n  background: var(--dsa-bg) !important;\n  box-shadow: inset 6px 0 0 var(--dsa-edge) !important;\n  border-radius: 8px;\n}\n/* Amazon paints white boxes inside the card; let the tint show through. */\n.dsa-paint .a-section,\n.dsa-paint .s-card-border,\n.dsa-paint .puis-card-border,\n.dsa-paint .s-card-container,\n.dsa-paint .puis-padding-left-small {\n  background: transparent !important;\n}\n/* Keep product photos true to colour: a plain white box behind the image, no blending. */\n.dsa-paint .s-product-image-container {\n  background: #fff !important;\n  border-radius: 6px;\n}\n.dsa-paint .s-image { mix-blend-mode: normal !important; }\n\n.dsa-dupe { display: none !important; }\n\n/* ---------- trust badge: a small pill over the card's top-right corner ---------- */\n.dsa-rated { position: relative; }\n.dsa-rated:has(.dsa-badge[open]) { z-index: 60; }\n.dsa-wide [data-cy=\"title-recipe\"] { padding-right: 130px; }       /* open popover sits above neighbouring cards */\n.dsa-badge {\n  position: absolute;\n  top: 6px;\n  right: 6px;\n  z-index: 30;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  color: var(--dsa-ink);\n  text-align: left;\n}\n.dsa-badge > summary {\n  display: inline-block;\n  padding: 2px 8px;\n  border-radius: 11px;\n  background: var(--dsa-edge);\n  color: #fff;\n  font-weight: 700;\n  white-space: nowrap;\n  cursor: pointer;\n  list-style: none;\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);\n}\n.dsa-badge > summary::-webkit-details-marker { display: none; }\n.dsa-badge > summary::marker { content: \"\"; }\n.dsa-badge > summary::after { content: \" \\25BE\"; font-weight: 400; }\n.dsa-badge[open] > summary::after { content: \" \\25B4\"; }\n.dsa-badge .dsa-score { font-weight: 400; opacity: 0.85; }\n.dsa-badge li { margin: 1px 0; white-space: pre-wrap; padding-left: 2.2em; text-indent: -2.2em; }\n.dsa-badge li.dsa-good { color: #1e6b25; }\n.dsa-badge li.dsa-bad { color: #9b1c1c; }\n\n/* ---------- brand buttons (badge + manager) ---------- */\n.dsa-badge-body {\n  position: absolute;\n  top: calc(100% + 4px);\n  right: 0;\n  width: 280px;\n  max-width: 80vw;\n  max-height: 60vh;\n  overflow-y: auto;\n  padding: 10px 12px;\n  border: 1px solid var(--dsa-edge);\n  border-radius: 8px;\n  background: #fff;\n  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);\n}\n\n.dsa-badge .dsa-badge-body ul { margin: 0; padding: 0; list-style: none; background: none; }\n.dsa-brandrow {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  margin-top: 8px;\n  padding-top: 8px;\n  border-top: 1px solid rgba(0, 0, 0, 0.12);\n}\n.dsa-brandname { font-weight: 700; color: #0f1111; margin-right: auto; }\n.dsa-muted { color: #565959; font-size: 12px; }\n.dsa-btn {\n  font: 12px/1 \"Amazon Ember\", Arial, sans-serif;\n  padding: 5px 9px;\n  border: 1px solid #b9bdbd;\n  border-radius: 12px;\n  background: #fff;\n  color: #0f1111;\n  cursor: pointer;\n}\n.dsa-btn:hover { background: #f3f3f3; }\n.dsa-btn.dsa-trust { border-color: #2e7d32; color: #1e6b25; }\n.dsa-btn.dsa-block { border-color: #b71c1c; color: #9b1c1c; }\n.dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }\n.dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }\n.dsa-btn.dsa-x { padding: 3px 8px; font-size: 14px; }\n.dsa-btn.dsa-reset { margin-left: auto; }\n\n.dsa-manage {\n  display: block;\n  margin: 8px 0 0 50px;\n  padding: 0;\n  border: 0;\n  background: none;\n  color: #007185;\n  font: 12px \"Amazon Ember\", Arial, sans-serif;\n  cursor: pointer;\n  text-align: left;\n}\n.dsa-manage:hover { text-decoration: underline; }\n.dsa-panel {\n  margin-top: 8px;\n  max-height: 360px;\n  overflow-y: auto;\n  font: 12px/1.4 \"Amazon Ember\", Arial, sans-serif;\n}\n.dsa-panel[hidden] { display: none; }\n.dsa-phead { margin: 8px 0 4px; font-weight: 700; font-size: 12px; }\n.dsa-plist { margin: 0; padding: 0; list-style: none; }\n.dsa-pitem {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px 6px;\n  padding: 4px 0;\n  border-bottom: 1px solid #eee;\n}\n.dsa-pname { font-weight: 700; margin-right: auto; word-break: break-word; }\n.dsa-ptag { font-size: 11px; padding: 1px 6px; border-radius: 8px; color: #fff; }\n.dsa-ptag.dsa-trust { background: #2e7d32; }\n.dsa-ptag.dsa-block { background: #b71c1c; }\n.dsa-pactions { display: flex; gap: 4px; width: 100%; justify-content: flex-end; }\n.dsa-pitem .dsa-btn { padding: 3px 7px; font-size: 11px; }\n.dsa-pfoot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }\n\n/* ---------- promos / ad blocks between results ---------- */\n.dsa-clutter,\n.dsa-stray-head { display: none !important; }\n\n/* ---------- product page panel ---------- */\n.dsa-checked { font-weight: 700; }\n.dsa-product {\n  margin: 8px 0 10px;\n  padding: 8px 12px 8px 14px;\n  border-radius: 8px;\n  background: var(--dsa-bg);\n  box-shadow: inset 6px 0 0 var(--dsa-edge);\n  font: 13px/1.4 \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n.dsa-ph-head { display: flex; align-items: center; gap: 8px; }\n.dsa-ph-pill {\n  padding: 2px 9px;\n  border-radius: 11px;\n  background: var(--dsa-edge);\n  color: #fff;\n  font-weight: 700;\n}\n.dsa-ph-title { font-weight: 700; color: var(--dsa-ink); margin-left: auto; }\n.dsa-ph-delta { font-weight: 700; font-size: 15px; cursor: help; }\n.dsa-ph-delta.dsa-up { color: #1e6b25; }\n.dsa-ph-delta.dsa-down { color: #9b1c1c; }\n.dsa-ph-delta.dsa-same { color: #565959; }\n.dsa-ph-compare { margin-top: 6px; }\n.dsa-delta { font-weight: 700; padding: 1px 6px; border-radius: 8px; }\n.dsa-delta.dsa-up { color: #1e6b25; background: rgba(46, 125, 50, 0.12); }\n.dsa-delta.dsa-down { color: #9b1c1c; background: rgba(183, 28, 28, 0.1); }\n.dsa-delta.dsa-same { color: #565959; background: rgba(0, 0, 0, 0.06); }\n.dsa-ph-details { margin-top: 6px; }\n.dsa-ph-details > summary { cursor: pointer; color: #007185; }\n.dsa-ph-list { margin: 6px 0; padding: 0; list-style: none; }\n.dsa-ph-list li { margin: 1px 0; padding-left: 2.6em; text-indent: -2.6em; }\n.dsa-ph-list li.dsa-good { color: #1e6b25; }\n.dsa-ph-list li.dsa-bad { color: #9b1c1c; }\n.dsa-product-error { --dsa-bg: #f3f3f3; --dsa-edge: #888; --dsa-ink: #565959; }\n\n/* \"Found at MERCHANT for PRICE\" box, to the right of the price */\n.dsa-found {\n  float: right;\n  clear: right;\n  width: 44%;\n  max-width: 220px;\n  margin: 0 0 6px 8px;\n  padding: 6px 8px;\n  border-radius: 6px;\n  background: #00aaff;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  position: relative;\n  z-index: 2;\n}\n.dsa-found a { color: #0f1111 !important; text-decoration: none; }\n.dsa-found a:hover { text-decoration: underline; }\n.dsa-found .dsa-found-main { display: block; font-weight: 700; }\n.dsa-found .dsa-found-google { display: block; margin-top: 3px; font-size: 10.5px; text-decoration: underline; }\n\n/* \"Scan for off-Amazon prices\" */\n.dsa-scanbox { margin: 8px 0 0 50px; }\n.dsa-scan {\n  display: block; width: 100%; padding: 5px 8px; border: 1px solid #00aaff; border-radius: 6px;\n  background: #e6f6ff; color: #0f1111; font: 12px/1.3 \"Amazon Ember\", Arial, sans-serif; text-align: left; cursor: pointer;\n}\n.dsa-scan:hover:not(:disabled) { background: #ccecff; }\n.dsa-scan:disabled { cursor: progress; opacity: 0.8; }\n.dsa-scan-note { margin-top: 4px; font-size: 11px; color: #565959; }\n.dsa-scan-note:empty { display: none; }\n";
+  style.textContent = "/* AmazonPlus \u2014 injected styles. Everything is prefixed dsa- to stay out of Amazon's way. */\n\n/* ---------- toggle ---------- */\n#dsa-toggle {\n  box-sizing: border-box;\n  margin: 0 0 14px;\n  padding: 10px 12px;\n  border: 2px solid #8bc34a;\n  border-radius: 10px;\n  background: #fbfdf7;\n  font-family: \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n#dsa-toggle.dsa-inline { max-width: 360px; margin: 8px 0 12px; }\n/* Floating at the top of the window once its place in the column has scrolled away */\n#dsa-toggle.dsa-float {\n  position: fixed;\n  top: 8px;\n  z-index: 300;\n  margin: 0;\n  max-height: calc(100vh - 16px);\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);\n}\n#dsa-toggle.dsa-float.dsa-float-tall { overflow-y: auto; }\n\n.dsa-switch {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  cursor: pointer;\n  user-select: none;\n}\n.dsa-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }\n.dsa-track {\n  position: relative;\n  flex: none;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  background: #b9bdbd;\n  transition: background 0.15s;\n}\n.dsa-thumb {\n  position: absolute;\n  top: 3px;\n  left: 3px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  background: #fff;\n  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);\n  transition: transform 0.15s;\n}\n.dsa-switch input:checked + .dsa-track { background: #2e7d32; }\n.dsa-switch input:checked + .dsa-track .dsa-thumb { transform: translateX(18px); }\n.dsa-switch input:focus-visible + .dsa-track { outline: 2px solid #007185; outline-offset: 2px; }\n.dsa-label { font-size: 16px; font-weight: 700; }\n.dsa-unit { margin-bottom: 6px; }\n\n.dsa-status { margin: 6px 0 0 50px; font-size: 12px; color: #565959; }\n.dsa-legend { margin: 8px 0 0 50px; }\n.dsa-legend span {\n  display: block;\n  height: 6px;\n  border-radius: 3px;\n  background: linear-gradient(90deg, hsl(120 70% 40%), hsl(60 70% 45%), hsl(0 70% 45%));\n}\n\n/* ---------- rated cards ---------- */\n.dsa-paint {\n  background: var(--dsa-bg) !important;\n  box-shadow: inset 6px 0 0 var(--dsa-edge) !important;\n  border-radius: 8px;\n}\n/* Amazon paints white boxes inside the card; let the tint show through. */\n.dsa-paint .a-section,\n.dsa-paint .s-card-border,\n.dsa-paint .puis-card-border,\n.dsa-paint .s-card-container,\n.dsa-paint .puis-padding-left-small {\n  background: transparent !important;\n}\n/* Keep product photos true to colour: a plain white box behind the image, no blending. */\n.dsa-paint .s-product-image-container {\n  background: #fff !important;\n  border-radius: 6px;\n}\n.dsa-paint .s-image { mix-blend-mode: normal !important; }\n\n.dsa-dupe { display: none !important; }\n\n/* ---------- trust badge: a small pill over the card's top-right corner ---------- */\n.dsa-rated { position: relative; }\n.dsa-rated:has(.dsa-badge[open]) { z-index: 60; }\n.dsa-wide [data-cy=\"title-recipe\"] { padding-right: 130px; }       /* open popover sits above neighbouring cards */\n.dsa-badge {\n  position: absolute;\n  top: 6px;\n  right: 6px;\n  z-index: 30;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  color: var(--dsa-ink);\n  text-align: left;\n}\n.dsa-badge > summary {\n  display: inline-block;\n  padding: 2px 8px;\n  border-radius: 11px;\n  background: var(--dsa-pill, var(--dsa-edge));\n  color: #fff;\n  font-weight: 700;\n  white-space: nowrap;\n  cursor: pointer;\n  list-style: none;\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);\n}\n.dsa-badge > summary::-webkit-details-marker { display: none; }\n.dsa-badge > summary::marker { content: \"\"; }\n.dsa-badge > summary::after { content: \" \\25BE\"; font-weight: 400; }\n.dsa-badge[open] > summary::after { content: \" \\25B4\"; }\n.dsa-badge .dsa-score { font-weight: 400; opacity: 0.85; }\n.dsa-badge li { margin: 1px 0; white-space: pre-wrap; padding-left: 2.2em; text-indent: -2.2em; }\n.dsa-badge li.dsa-good { color: #1e6b25; }\n.dsa-badge li.dsa-bad { color: #9b1c1c; }\n\n/* ---------- brand buttons (badge + manager) ---------- */\n.dsa-badge-body {\n  position: absolute;\n  top: calc(100% + 4px);\n  right: 0;\n  width: 280px;\n  max-width: 80vw;\n  max-height: 60vh;\n  overflow-y: auto;\n  padding: 10px 12px;\n  border: 1px solid var(--dsa-edge);\n  border-radius: 8px;\n  background: #fff;\n  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);\n}\n\n.dsa-badge .dsa-badge-body ul { margin: 0; padding: 0; list-style: none; background: none; }\n.dsa-brandrow {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  margin-top: 8px;\n  padding-top: 8px;\n  border-top: 1px solid rgba(0, 0, 0, 0.12);\n}\n.dsa-brandname { font-weight: 700; color: #0f1111; margin-right: auto; }\n.dsa-muted { color: #565959; font-size: 12px; }\n.dsa-btn {\n  font: 12px/1 \"Amazon Ember\", Arial, sans-serif;\n  padding: 5px 9px;\n  border: 1px solid #b9bdbd;\n  border-radius: 12px;\n  background: #fff;\n  color: #0f1111;\n  cursor: pointer;\n}\n.dsa-btn:hover { background: #f3f3f3; }\n.dsa-btn.dsa-trust { border-color: #2e7d32; color: #1e6b25; }\n.dsa-btn.dsa-block { border-color: #b71c1c; color: #9b1c1c; }\n.dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }\n.dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }\n.dsa-btn.dsa-x { padding: 3px 8px; font-size: 14px; }\n.dsa-btn.dsa-reset { margin-left: auto; }\n\n.dsa-manage {\n  display: block;\n  margin: 8px 0 0 50px;\n  padding: 0;\n  border: 0;\n  background: none;\n  color: #007185;\n  font: 12px \"Amazon Ember\", Arial, sans-serif;\n  cursor: pointer;\n  text-align: left;\n}\n.dsa-manage:hover { text-decoration: underline; }\n.dsa-panel {\n  margin-top: 8px;\n  max-height: 360px;\n  overflow-y: auto;\n  font: 12px/1.4 \"Amazon Ember\", Arial, sans-serif;\n}\n.dsa-panel[hidden] { display: none; }\n.dsa-phead { margin: 8px 0 4px; font-weight: 700; font-size: 12px; }\n.dsa-plist { margin: 0; padding: 0; list-style: none; }\n.dsa-pitem {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px 6px;\n  padding: 4px 0;\n  border-bottom: 1px solid #eee;\n}\n.dsa-pname { font-weight: 700; margin-right: auto; word-break: break-word; }\n.dsa-ptag { font-size: 11px; padding: 1px 6px; border-radius: 8px; color: #fff; }\n.dsa-ptag.dsa-trust { background: #2e7d32; }\n.dsa-ptag.dsa-block { background: #b71c1c; }\n.dsa-pactions { display: flex; gap: 4px; width: 100%; justify-content: flex-end; }\n.dsa-pitem .dsa-btn { padding: 3px 7px; font-size: 11px; }\n.dsa-pfoot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }\n\n/* ---------- promos / ad blocks between results ---------- */\n.dsa-clutter,\n.dsa-stray-head { display: none !important; }\n\n/* ---------- product page panel ---------- */\n.dsa-checked { font-weight: 700; }\n.dsa-product {\n  margin: 8px 0 10px;\n  padding: 8px 12px 8px 14px;\n  border-radius: 8px;\n  background: var(--dsa-bg);\n  box-shadow: inset 6px 0 0 var(--dsa-edge);\n  font: 13px/1.4 \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n.dsa-ph-head { display: flex; align-items: center; gap: 8px; }\n.dsa-ph-pill {\n  padding: 2px 9px;\n  border-radius: 11px;\n  background: var(--dsa-pill, var(--dsa-edge));\n  color: #fff;\n  font-weight: 700;\n}\n.dsa-ph-title { font-weight: 700; color: var(--dsa-ink); margin-left: auto; }\n.dsa-ph-delta { font-weight: 700; font-size: 15px; cursor: help; }\n.dsa-ph-delta.dsa-up { color: #1e6b25; }\n.dsa-ph-delta.dsa-down { color: #9b1c1c; }\n.dsa-ph-delta.dsa-same { color: #565959; }\n.dsa-ph-compare { margin-top: 6px; }\n.dsa-delta { font-weight: 700; padding: 1px 6px; border-radius: 8px; }\n.dsa-delta.dsa-up { color: #1e6b25; background: rgba(46, 125, 50, 0.12); }\n.dsa-delta.dsa-down { color: #9b1c1c; background: rgba(183, 28, 28, 0.1); }\n.dsa-delta.dsa-same { color: #565959; background: rgba(0, 0, 0, 0.06); }\n.dsa-ph-details { margin-top: 6px; }\n.dsa-ph-details > summary { cursor: pointer; color: #007185; }\n.dsa-ph-list { margin: 6px 0; padding: 0; list-style: none; }\n.dsa-ph-list li { margin: 1px 0; padding-left: 2.6em; text-indent: -2.6em; }\n.dsa-ph-list li.dsa-good { color: #1e6b25; }\n.dsa-ph-list li.dsa-bad { color: #9b1c1c; }\n.dsa-product-error { --dsa-bg: #f3f3f3; --dsa-edge: #888; --dsa-ink: #565959; }\n\n/* \"Found at MERCHANT for PRICE\" box, to the right of the price */\n.dsa-found {\n  float: right;\n  clear: right;\n  width: 44%;\n  max-width: 220px;\n  margin: 0 0 6px 8px;\n  padding: 6px 8px;\n  border-radius: 6px;\n  background: #00aaff;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  position: relative;\n  z-index: 2;\n}\n.dsa-found a { color: #0f1111 !important; text-decoration: none; }\n.dsa-found a:hover { text-decoration: underline; }\n.dsa-found .dsa-found-main { display: block; font-weight: 700; }\n.dsa-found .dsa-found-google { display: block; margin-top: 3px; font-size: 10.5px; text-decoration: underline; }\n\n/* \"Scan for off-Amazon prices\" */\n.dsa-scanbox { margin: 8px 0 0 50px; }\n.dsa-scan {\n  display: block; width: 100%; padding: 5px 8px; border: 1px solid #00aaff; border-radius: 6px;\n  background: #e6f6ff; color: #0f1111; font: 12px/1.3 \"Amazon Ember\", Arial, sans-serif; text-align: left; cursor: pointer;\n}\n.dsa-scan:hover:not(:disabled) { background: #ccecff; }\n.dsa-scan:disabled { cursor: progress; opacity: 0.8; }\n.dsa-scan-note { margin-top: 4px; font-size: 11px; color: #565959; }\n.dsa-scan-note:empty { display: none; }\n\n/* ---------- Amazon's dark mode (html.dsa-dark, set when the page behind the results is dark) ---------- */\n/* Every text colour below is at least 4.5:1 on its background. */\n.dsa-dark #dsa-toggle { background: #1d2421; border-color: #6a9f3a; color: #e3e6e6; }\n.dsa-dark #dsa-toggle.dsa-float { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }\n.dsa-dark .dsa-track { background: #5f6363; }\n.dsa-dark .dsa-status,\n.dsa-dark .dsa-scan-note,\n.dsa-dark .dsa-muted { color: #b9bdbd; }\n.dsa-dark .dsa-manage,\n.dsa-dark .dsa-ph-details > summary { color: #4fc3e0; }\n.dsa-dark .dsa-scan { background: #0b3a52; color: #e3e6e6; }\n.dsa-dark .dsa-scan:hover:not(:disabled) { background: #0e4a68; }\n.dsa-dark .dsa-badge-body { background: #22272a; color: #e3e6e6; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6); }\n.dsa-dark .dsa-badge li.dsa-good,\n.dsa-dark .dsa-ph-list li.dsa-good,\n.dsa-dark .dsa-ph-delta.dsa-up,\n.dsa-dark .dsa-delta.dsa-up { color: #86e08f; }\n.dsa-dark .dsa-badge li.dsa-bad,\n.dsa-dark .dsa-ph-list li.dsa-bad,\n.dsa-dark .dsa-ph-delta.dsa-down,\n.dsa-dark .dsa-delta.dsa-down { color: #ff9a8f; }\n.dsa-dark .dsa-ph-delta.dsa-same,\n.dsa-dark .dsa-delta.dsa-same { color: #b9bdbd; }\n.dsa-dark .dsa-brandname { color: #e3e6e6; }\n.dsa-dark .dsa-brandrow { border-top-color: rgba(255, 255, 255, 0.15); }\n.dsa-dark .dsa-pitem { border-bottom-color: #3a4044; }\n.dsa-dark .dsa-btn { background: #2b3134; border-color: #5f6363; color: #e3e6e6; }\n.dsa-dark .dsa-btn:hover { background: #363d41; }\n.dsa-dark .dsa-btn.dsa-trust { border-color: #4caf50; color: #86e08f; }\n.dsa-dark .dsa-btn.dsa-block { border-color: #e57373; color: #ff9a8f; }\n.dsa-dark .dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }\n.dsa-dark .dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }\n.dsa-dark .dsa-product { color: #e3e6e6; }\n.dsa-dark .dsa-product-error { --dsa-bg: #2b3134; --dsa-edge: #8a9093; --dsa-ink: #b9bdbd; }\n\n/* ---------- tile view (html.dsa-tiles) ----------\n   Amazon's row-by-row list becomes a grid of cards: each result's picture-left/text-right row is\n   stacked into a column, and everything else in the results area (headings, pagination) spans the\n   full width. Amazon's own tile searches come through unchanged in shape. */\nhtml.dsa-tiles .s-main-slot {\n  display: grid !important;\n  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;\n  grid-template-rows: none !important;\n  grid-auto-flow: row !important;\n  grid-auto-columns: auto !important;\n  gap: 12px 10px;\n  align-items: stretch;\n  margin: 0 !important;\n}\n@media (max-width: 600px) {\n  html.dsa-tiles .s-main-slot { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; gap: 8px 6px; }\n}\nhtml.dsa-tiles .s-main-slot > * { grid-column: 1 / -1; min-width: 0; }\nhtml.dsa-tiles .s-main-slot > div[data-component-type=\"s-search-result\"] {\n  grid-column: auto;\n  width: auto !important;\n  max-width: none !important;\n  padding: 0 !important;\n  margin: 0 !important;\n}\nhtml.dsa-tiles .s-main-slot > div[data-component-type=\"s-search-result\"] > .sg-col-inner { height: 100%; padding: 0 !important; margin: 0 !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-widget-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-card-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-card-container > .a-section { height: 100%; box-sizing: border-box; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-row { flex-direction: column; flex-wrap: nowrap; margin: 0 !important; width: 100% !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-col {\n  width: 100% !important;\n  max-width: 100% !important;\n  min-width: 0 !important;\n  flex: none !important;\n  padding: 0 6px !important;\n  display: block !important;\n}\n/* Every tile's photo gets the same box, and Amazon's \"Best Seller\" / \"Overall Pick\" label sits over\n   its top-left corner instead of above it, so titles and prices line up across a row. */\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-col-inner { position: relative; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-list-status-badge-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puis-status-badge-container {\n  position: absolute !important;\n  top: 4px;\n  left: 0;\n  z-index: 3;\n  width: auto !important;\n  height: auto !important;\n  margin: 0 !important;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-product-image-container {\n  height: 206px !important;\n  box-sizing: border-box;\n  overflow: hidden;\n  padding: 26px 0 0 !important;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-product-image-container img.s-image {\n  max-height: 180px !important;\n  width: auto !important;\n  max-width: 100% !important;\n  margin: 0 auto;\n  display: block;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] h2 { font-size: 14px !important; line-height: 1.35 !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] [data-cy=\"title-recipe\"] { padding-right: 0 !important; }\nhtml.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4px 0 6px; }\n";
   (document.head || document.documentElement).appendChild(style);
 })();
 
 // ---- src/config.js ----
-// Disenshittify Amazon \u2014 tunable lists and weights.
+// AmazonPlus \u2014 tunable lists and weights.
 // Edit these to adjust how listings are scored. All matching is case-insensitive.
 
 globalThis.DSA_CONFIG = {
   // Hide promo / ad blocks between results (Haul carousels, brand banners, video ads\u2026) while on.
   hideClutter: true,
 
-  // "Scan for off-Amazon prices" (button in the Disenshittify box): looks up listings with a manufacturer
+  // Show search results as tiles (a grid of cards) whatever layout Amazon picked, while on.
+  tiles: true,
+
+  // "Scan for off-Amazon prices" (button in the AmazonPlus box): looks up listings with a manufacturer
   // model number on UPCitemdb's free plan and shows "Found at MERCHANT for PRICE". Userscript only.
   priceCheck: {
     enabled: true,
@@ -160,7 +163,7 @@ if (typeof module !== "undefined") module.exports = DSA_CONFIG;
 
 ;
 // ---- src/brands.js ----
-// Disenshittify Amazon \u2014 starter brand lists.
+// AmazonPlus \u2014 starter brand lists.
 // These seed the scorer. The extension also learns brands as you browse, and your own
 // Trust/Block choices (from the badge on each card) override everything here.
 //
@@ -374,7 +377,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
 
 ;
 // ---- src/scorer.js ----
-// Disenshittify Amazon \u2014 trust scorer.
+// AmazonPlus \u2014 trust scorer.
 // Pure functions: no DOM access, so the same code runs in the extension and in Node tests.
 //
 // scorePage(listings, config, bigrams) takes the listings on one results page and returns
@@ -910,7 +913,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
 
 ;
 // ---- src/memory.js ----
-// Disenshittify Amazon \u2014 brand memory.
+// AmazonPlus \u2014 brand memory.
 // Remembers how each brand's listings have looked across your searches, and turns that into
 // learned "trust" / "block" decisions. Pure functions over a plain object, so it runs in Node tests.
 //
@@ -1046,7 +1049,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
 
 ;
 // ---- src/product.js ----
-// Disenshittify Amazon \u2014 product pages.
+// AmazonPlus \u2014 product pages.
 // extractProduct(document) reads what a product page offers beyond the search results card;
 // refineScore(initial, product, cfg, bigrams) turns the search-results estimate into a better one
 // and says exactly what changed. extractProduct needs a DOM; refineScore is pure (runs in Node tests).
@@ -1339,7 +1342,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
 
 ;
 // ---- src/pricecheck.js ----
-// Disenshittify Amazon \u2014 "Found at MERCHANT for PRICE" (off-Amazon price scan, via UPCitemdb).
+// AmazonPlus \u2014 "Found at MERCHANT for PRICE" (off-Amazon price scan, via UPCitemdb).
 // For a listing with a manufacturer model number, search UPCitemdb's product database for that brand +
 // model and look for a 100%-identical item: the same model number with nothing else bundled, sold new
 // and in stock by a US store other than Amazon or eBay, with a recently checked price. Pure functions;
@@ -1463,7 +1466,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
 
 ;
 // ---- src/content.js ----
-// Disenshittify Amazon \u2014 content script for search results pages.
+// AmazonPlus \u2014 content script for search results pages.
 // Adds a toggle above the left-hand filters. When on, every result card is scored,
 // tinted green \u2192 yellow \u2192 red by trust, and the results are re-sorted most-trusted first.
 // Each card's badge lets you trust or block its brand; brands are also learned across searches.
@@ -1697,9 +1700,33 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
 
   // ---------- decoration ----------
 
+  // Tints for a score: card background, edge stripe, text ink, and the Trust pill (white text on it).
+  // All text/background pairs are at least 4.5:1. On a dark page (Amazon's dark mode), dark tints
+  // with light text, so Amazon's own light text stays readable on the card.
   function colorsFor(score) {
     const hue = Math.round(Math.max(0, Math.min(100, score)) * 1.2); // 0 red \u2192 60 yellow \u2192 120 green
-    return { bg: `hsl(${hue} 78% 91%)`, edge: `hsl(${hue} 70% 40%)`, ink: `hsl(${hue} 60% 22%)` };
+    return darkPage
+      ? { bg: `hsl(${hue} 30% 17%)`, edge: `hsl(${hue} 60% 45%)`, ink: `hsl(${hue} 70% 78%)`, pill: `hsl(${hue} 70% 27%)` }
+      : { bg: `hsl(${hue} 78% 94%)`, edge: `hsl(${hue} 70% 40%)`, ink: `hsl(${hue} 60% 22%)`, pill: `hsl(${hue} 75% 27%)` };
+  }
+
+  // Is Amazon showing a dark page? Judged from the colour actually behind the results (or the
+  // product page), so it follows Amazon's own dark mode whatever triggered it.
+  let darkPage = false;
+  function checkDark() {
+    let node = document.querySelector(CARD_SEL + ", #dp, #ppd") || document.body;
+    let bg = null;
+    for (; node && node.nodeType === 1; node = node.parentElement) {
+      const c = getComputedStyle(node).backgroundColor;
+      const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(c || "");
+      if (m && (m[4] === undefined || +m[4] > 0.5)) { bg = [+m[1], +m[2], +m[3]]; break; }
+    }
+    if (!bg) { const c = getComputedStyle(document.documentElement).backgroundColor; const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(c || ""); bg = m && (m[4] === undefined || +m[4] > 0.5) ? [+m[1], +m[2], +m[3]] : [255, 255, 255]; }
+    const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const was = darkPage;
+    darkPage = 0.2126 * lin(bg[0]) + 0.7152 * lin(bg[1]) + 0.0722 * lin(bg[2]) < 0.2;
+    document.documentElement.classList.toggle("dsa-dark", darkPage);
+    return darkPage !== was;
   }
 
   function paintTarget(card) {
@@ -1732,6 +1759,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       node.style.setProperty("--dsa-bg", c.bg);
       node.style.setProperty("--dsa-edge", c.edge);
       node.style.setProperty("--dsa-ink", c.ink);
+      node.style.setProperty("--dsa-pill", c.pill);
     }
 
     const up = result.listing && result.listing.unitPrice;
@@ -1835,6 +1863,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     panel.style.setProperty("--dsa-bg", c.bg);
     panel.style.setProperty("--dsa-edge", c.edge);
     panel.style.setProperty("--dsa-ink", c.ink);
+    panel.style.setProperty("--dsa-pill", c.pill);
 
     // The change in score from the estimate this page started from: the search-results rating, or,
     // for a page opened directly, the rating from its title, stars and review count alone.
@@ -1847,7 +1876,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     const head = el("div", { class: "dsa-ph-head" },
       el("span", { class: "dsa-ph-pill" }, `Trust ${refined.tier}/5`, el("span", { class: "dsa-score" }, ` \u00b7 ${refined.score}`)),
       el("span", { class: "dsa-ph-delta " + cls, title: deltaTip }, deltaText),
-      el("span", { class: "dsa-ph-title" }, "Disenshittify"));
+      el("span", { class: "dsa-ph-title" }, "AmazonPlus"));
     let compare;
     if (!init) {
       compare = el("div", { class: "dsa-ph-compare" }, "Not in your recent search results \u2014 rated from this page.",
@@ -1915,6 +1944,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     if (!enabled) { if (old) old.remove(); return; }
     const anchor = document.querySelector("#titleSection, #title_feature_div, #title");
     if (!anchor || !PRODUCT.productTitle(document)) return;
+    checkDark();
     if (PRODUCT.isMediaPage(document)) { if (old) old.remove(); return; }   // books, films, TV, music, games
     try {
       const product = PRODUCT.extractProduct(document);
@@ -1938,16 +1968,16 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       if (old) old.replaceWith(panel); else anchor.insertAdjacentElement("afterend", panel);
     } catch (e) {
       // Never fail silently: say so on the page, with the error, so it can be reported.
-      console.error("[Disenshittify] product page:", e);
+      console.error("[AmazonPlus] product page:", e);
       const panel = el("div", { id: "dsa-product", class: "dsa-product dsa-product-error" },
-        el("div", { class: "dsa-ph-head" }, el("span", { class: "dsa-ph-title" }, "Disenshittify")),
+        el("div", { class: "dsa-ph-head" }, el("span", { class: "dsa-ph-title" }, "AmazonPlus")),
         el("div", { class: "dsa-ph-compare" }, "Couldn't rate this page: " + (e && e.message || e)));
       if (old) old.replaceWith(panel); else anchor.insertAdjacentElement("afterend", panel);
     }
   }
 
   // ---------- "Found at MERCHANT for PRICE" (off-Amazon price scan, UPCitemdb) ----------
-  // Nothing is looked up automatically. "Scan for off-Amazon prices" in the Disenshittify box looks up
+  // Nothing is looked up automatically. "Scan for off-Amazon prices" in the AmazonPlus box looks up
   // listings anywhere on Amazon that have a manufacturer model number and cost over $30, one at a time,
   // on UPCitemdb's free plan (100 requests a day per connection, no sign-up), as they scroll into view,
   // and shows the cheapest identical item sold new elsewhere. Results are kept for 72 hours.
@@ -2128,19 +2158,19 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
           usage.used = Math.max(usage.limit, PC.searchLimit || 20); storeSet(KEY_PRICE_USAGE, usage);
           scanOn = false; scanQueue.length = 0; scanQueued.clear();
           scanNote = scanSummary(`UPCitemdb's free daily limit is used up${!isNaN(after) ? ` (resets in about ${Math.ceil(after / 3600)} h)` : ""}.`);
-          console.info("[Disenshittify] price scan: daily limit reached", res.text.slice(0, 200));
+          console.info("[AmazonPlus] price scan: daily limit reached", res.text.slice(0, 200));
           break;
         }
         let json = null;
         try { json = JSON.parse(res.text); } catch (e) { /* not JSON */ }
         if (res.status !== 200 || !json || json.code !== "OK") {
           scanQueued.delete(q);   // try again if it comes back into view
-          console.info(`[Disenshittify] price scan: ${q} \u2014 no answer (HTTP ${res.status}${json && json.code ? ", " + json.code : ""})`);
+          console.info(`[AmazonPlus] price scan: ${q} \u2014 no answer (HTTP ${res.status}${json && json.code ? ", " + json.code : ""})`);
         } else {
           const f = PRICECHECK.pickOffer(json, pq.model, pq.title, Date.now(), PC.maxOfferAgeDays || 60);
           prices[q] = { at: Date.now(), f: f ? { m: f.m, p: f.p, u: f.u, at: f.at } : 0 };
           if (f) scanTally.found++; else scanTally.none++;
-          console.info(`[Disenshittify] price scan: ${q} \u2014 ${(json.items || []).length} products; ` + (f ? `cheapest identical: ${f.m} ${f.p}` : "no identical item sold new elsewhere"));
+          console.info(`[AmazonPlus] price scan: ${q} \u2014 ${(json.items || []).length} products; ` + (f ? `cheapest identical: ${f.m} ${f.p}` : "no identical item sold new elsewhere"));
           renderPriceFor(q);
           savePrices();
         }
@@ -2220,7 +2250,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
   function cards() { return [...document.querySelectorAll(CARD_SEL)].filter(c => c.dataset.asin); }
 
   // Books, films, TV, music and games aren't rated. A search where nearly everything (80%+) is
-  // media gets no Disenshittify at all; on mixed pages the media results are just left alone.
+  // media gets no AmazonPlus at all; on mixed pages the media results are just left alone.
   function isMedia(card) {
     if (card.dataset.dsaMedia === undefined) card.dataset.dsaMedia = PRODUCT.isMediaCard(card) ? "1" : "";
     return card.dataset.dsaMedia === "1";
@@ -2236,14 +2266,19 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     applying = true;
     try {
       list.forEach(undecorate);
+      checkDark();
 
       // Amazon can split results across several containers; the main slot receives the sorted list.
       const slot = document.querySelector(".s-main-slot") || list[0].parentElement;
       const parents = new Set(list.map(c => c.parentElement).concat(slot));
       // Snapshot the original order of every container involved, unless we already hold one for these cards.
-      if (!snapshot || list.some(c => !snapshot.cards.has(c))) {
+      // (Also when Amazon swapped the results in place, e.g. going to page 2: its old cards are gone.)
+      if (!snapshot || list.some(c => !snapshot.cards.has(c)) || [...snapshot.cards].some(c => !c.isConnected)) {
+        // A new set of results (e.g. page 2 swapped in, most cards new): the promo count starts again.
+        if (snapshot && list.filter(c => !snapshot.cards.has(c)).length >= list.length / 3) promosRemoved = 0;
         snapshot = { order: new Map([...parents].map(p => [p, [...p.children]])), cards: new Set(list) };
       }
+      setTiles(true);
 
       const media = list.filter(isMedia);
       const rated = list.filter(c => !isMedia(c));
@@ -2312,12 +2347,19 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     }
   }
 
+  // Tile view: the results grid becomes rows of cards (styles.css, html.dsa-tiles), whatever layout
+  // Amazon chose for the search. Off again when AmazonPlus is switched off.
+  function setTiles(on) {
+    document.documentElement.classList.toggle("dsa-tiles", !!on && CFG.tiles !== false);
+  }
+
   // Put every result back where Amazon had it (without touching colours or badges).
   function restoreOrder() {
     if (!snapshot) return;
     for (const [parent, children] of snapshot.order) {
       if (!parent.isConnected) continue;
-      for (const node of children) if (node.isConnected || snapshot.cards.has(node)) parent.appendChild(node);
+      // Only nodes still on the page: cards Amazon has taken away (page 2 replacing page 1) stay gone.
+      for (const node of children) if (node.isConnected) parent.appendChild(node);
     }
   }
 
@@ -2344,9 +2386,11 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       if (snapshot) {
         for (const [parent, children] of snapshot.order) {
           if (!parent.isConnected) continue;
-          for (const node of children) if (node.isConnected || snapshot.cards.has(node)) parent.appendChild(node);
+          // Only nodes still on the page: cards Amazon has taken away (page 2 replacing page 1) stay gone.
+      for (const node of children) if (node.isConnected) parent.appendChild(node);
         }
       }
+      setTiles(false);
       snapshot = null;
       lastResults = null;
       updateStatus(null);
@@ -2355,18 +2399,18 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     }
   }
 
-  // ---------- Disenshittified entries in Amazon's Sort by menu ----------
+  // ---------- AmazonPlus entries in Amazon's Sort by menu ----------
   // Amazon's menu is a hidden <select id="s-result-sort-select"> whose options Amazon copies into
   // the visible pop-up list each time it opens, so adding <option>s puts entries in the menu.
   // Picking one is caught before Amazon navigates; it re-orders the results already on the page.
   //
-  //   Disenshittified: Trust   \u2014 most trusted first. Also what a fresh search shows by default.
-  //   Disenshittified: $/count \u2014 cheapest per unit first.
+  //   AmazonPlus: Trust   \u2014 most trusted first. Also what a fresh search shows by default.
+  //   AmazonPlus: $/count \u2014 cheapest per unit first.
   //   Amazon's own sorts       \u2014 Amazon's order, with colours and badges. Picking "Featured" shows
   //                              Amazon's real Featured order for that search.
-  // A Disenshittified choice stays until you pick one of Amazon's sorts.
-  const SORTS = { trust: { value: "dsa-trust", label: "Disenshittified: Trust" },
-                  unit:  { value: "dsa-unit",  label: "Disenshittified: $/count" } };
+  // A AmazonPlus choice stays until you pick one of Amazon's sorts.
+  const SORTS = { trust: { value: "dsa-trust", label: "AmazonPlus: Trust" },
+                  unit:  { value: "dsa-unit",  label: "AmazonPlus: $/count" } };
   const OUR_VALUES = new Set(Object.values(SORTS).map(x => x.value));
 
   function sortSelect() { return document.getElementById("s-result-sort-select"); }
@@ -2511,12 +2555,14 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       status.textContent = promosRemoved ? "Off \u00b7 reload to bring back the hidden promos" : "Off";
     }
     else {
-      // Count what's actually on screen (hidden repeat placements don't count).
-      const visible = cards().filter(c => c.dataset.dsaScored && !c.classList.contains("dsa-dupe"));
+      // Count what's actually on screen: hidden repeat placements don't count, and neither do cards an
+      // ad blocker hides (uBlock Origin hides sponsored results with display:none; they're still rated).
+      const shown = c => c.getClientRects().length > 0;
+      const visible = cards().filter(c => c.dataset.dsaScored && !c.classList.contains("dsa-dupe") && shown(c));
       const tiers = [0, 0, 0, 0, 0, 0];
       for (const c of visible) tiers[+c.dataset.dsaTier]++;
       const extras = [];
-      const media = cards().filter(c => c.dataset.dsaMedia === "1").length;
+      const media = cards().filter(c => c.dataset.dsaMedia === "1" && shown(c)).length;
       if (media) extras.push(`${media} book${media === 1 ? "" : "s"}/media not rated`);
       if (hidden) extras.push(`${hidden} promo${hidden === 1 ? "" : "s"} removed`);
       if (mode === "amazon") extras.push("Amazon's order");
@@ -2613,7 +2659,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       el("label", { class: "dsa-switch" },
         input,
         el("span", { class: "dsa-track" }, el("span", { class: "dsa-thumb" })),
-        el("span", { class: "dsa-label" }, "Disenshittify")),
+        el("span", { class: "dsa-label" }, "AmazonPlus")),
       el("div", { class: "dsa-status" }, "Off"),
       el("div", { class: "dsa-legend", "aria-hidden": "true" }, el("span")),
       el("div", { class: "dsa-scanbox", hidden: "" },
@@ -2645,18 +2691,40 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     floatToggle(toggle);
   }
 
-  // Keep the Disenshittify box in view: once its place in the column scrolls off the top of the
+  // Keep the AmazonPlus box in view: once its place in the column scrolls off the top of the
   // window, it floats at the top of the window over the filter column (same position and width),
   // and settles back into place when you scroll up again.
   function floatToggle(toggle) {
     if (typeof IntersectionObserver !== "function") return;
     const spot = el("div", { class: "dsa-spot" });
     toggle.parentElement.insertBefore(spot, toggle);
+    // Amazon shows a sticky search bar at the top of the window when you scroll back up; the box
+    // sits just below it instead of covering it.
+    const headerBottom = x => {
+      let bottom = 0;
+      for (const n of document.elementsFromPoint ? document.elementsFromPoint(x, 2) : []) {
+        if (n === toggle || toggle.contains(n) || n === document.documentElement || n === document.body) continue;
+        for (let e = n; e && e !== document.body; e = e.parentElement) {
+          const pos = getComputedStyle(e).position;
+          if (pos === "fixed" || pos === "sticky") {
+            const r = e.getBoundingClientRect();
+            if (r.top <= 2 && r.height < innerHeight / 3) bottom = Math.max(bottom, r.bottom);
+            break;
+          }
+        }
+      }
+      return bottom;
+    };
     const place = () => {
       if (!toggle.classList.contains("dsa-float")) return;
       const r = spot.getBoundingClientRect();
       toggle.style.left = r.left + "px";
       toggle.style.width = r.width + "px";
+      const top = Math.round(headerBottom(r.left + r.width / 2)) + 8;
+      toggle.style.top = top + "px";
+      // Scrolls inside only when it's taller than the room left (e.g. the brand list is open).
+      toggle.style.maxHeight = (innerHeight - top - 8) + "px";
+      toggle.classList.toggle("dsa-float-tall", toggle.scrollHeight > innerHeight - top - 8);
     };
     new IntersectionObserver(([e]) => {
       const off = !e.isIntersecting && e.boundingClientRect.top < 0;
@@ -2666,21 +2734,37 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
         toggle.classList.add("dsa-float");
         place();
       } else {
-        toggle.classList.remove("dsa-float");
-        toggle.style.left = toggle.style.width = "";
+        toggle.classList.remove("dsa-float", "dsa-float-tall");
+        toggle.style.left = toggle.style.width = toggle.style.top = toggle.style.maxHeight = "";
         spot.style.height = "";
       }
     }, { threshold: 0 }).observe(spot);
     window.addEventListener("resize", place, { passive: true });
+    let ticking = false;
+    window.addEventListener("scroll", () => {
+      if (ticking || !toggle.classList.contains("dsa-float")) return;
+      ticking = true;
+      requestAnimationFrame(() => { ticking = false; place(); });
+    }, { passive: true });
+    // Opening the brand list makes the box taller.
+    new MutationObserver(() => requestAnimationFrame(place)).observe(toggle, { attributes: true, subtree: true, attributeFilter: ["hidden", "open"] });
   }
 
   // ---------- keep up with Amazon's in-page updates ----------
 
   let pending = null;
+  // Waits for Amazon to settle (350 ms without changes), but never more than 800 ms after the first
+  // change: Amazon keeps the page busy (lazy images, ads) after swapping in page 2, and a pure
+  // "wait for quiet" left new results unrated until you scrolled.
+  let firstChangeAt = 0;
   function onMutations() {
     if (applying) return;
     clearTimeout(pending);
+    const now = Date.now();
+    if (!firstChangeAt) firstChangeAt = now;
+    const wait = Math.max(0, Math.min(350, 800 - (now - firstChangeAt)));
     pending = setTimeout(() => {
+      firstChangeAt = 0;
       if (isMediaSearch()) { leaveMediaSearch(); return; }
       placeToggle();
       const input = document.querySelector("#dsa-toggle .dsa-main");
@@ -2691,7 +2775,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
         lastPromoCount = promosRemoved;
         updateStatus(lastResults, currentMode(), promosRemoved);
       }
-    }, 350);
+    }, wait);
   }
 
   // A search that turned into a media search (Amazon swapped the results in place): undo everything.
@@ -2724,8 +2808,16 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
   document.addEventListener("click", noteClick, true);
   document.addEventListener("auxclick", noteClick, true);
 
+  // Amazon switching between light and dark while the page is open.
+  try {
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => setTimeout(() => {
+      if (!enabled) return;
+      if (PRODUCT.isProductPage(location)) runProductPage(false); else apply();
+    }, 300));
+  } catch (e) { /* old browsers */ }
+
   const INFO = typeof GM_info !== "undefined" ? GM_info : typeof GM !== "undefined" && GM && GM.info ? GM.info : null;
-  console.info("[Disenshittify] running on this page (v" + ((INFO && INFO.script && INFO.script.version) || "add-on") +
+  console.info("[AmazonPlus] running on this page (v" + ((INFO && INFO.script && INFO.script.version) || "add-on") +
     (INFO ? ", " + (INFO.scriptHandler || "userscript manager") + (INFO.injectInto ? ", " + INFO.injectInto + " mode" : "") : "") + ")");
   // v0.1 kept the on/off flag in amazon.com's own localStorage, where Amazon's scripts can see it.
   // Move it into the script's private storage and delete it from the site.

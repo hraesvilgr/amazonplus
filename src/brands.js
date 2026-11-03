@@ -1,4 +1,4 @@
-// Disenshittify Amazon — starter brand lists.
+// AmazonPlus — starter brand lists.
 // These seed the scorer. The extension also learns brands as you browse, and your own
 // Trust/Block choices (from the badge on each card) override everything here.
 //

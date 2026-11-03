@@ -56,6 +56,14 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.waitForSelector(".dsa-badge");
   const order = await p.$$eval(".s-main-slot > [data-asin]:not(.dsa-dupe)", els => els.map(e => +e.dataset.dsaTier));
   check("Every visible card rated", order.length === 51, `${order.length} visible`);
+  // An ad blocker (uBlock Origin) hides the sponsored results: the status counts only what's shown
+  await p.addStyleTag({ content: 'div[data-component-type="s-search-result"]:has(.puis-sponsored-label-text) { display: none !important; }' });
+  await p.click("#dsa-toggle .dsa-switch"); await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  const blocked = await p.evaluate(() => ({ status: document.querySelector("#dsa-toggle .dsa-status").textContent,
+    shown: [...document.querySelectorAll('.s-main-slot > [data-asin]')].filter(c => c.getClientRects().length && c.querySelector(".dsa-badge")).length }));
+  check("Ad blocker hiding sponsored results: status counts only the listings you can see", blocked.status.startsWith(blocked.shown + " rated") && blocked.shown < 51, JSON.stringify(blocked));
+  await p.evaluate(() => [...document.querySelectorAll("style")].pop().remove());
+  await p.click("#dsa-toggle .dsa-switch"); await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
   check("Sorted most-trusted first", order.every((t, i) => i === 0 || order[i - 1] >= t), order.join(""));
   check("Status line filled in", /rated/.test(await p.textContent("#dsa-toggle .dsa-status")), await p.textContent("#dsa-toggle .dsa-status"));
   if (shotDir) await p.screenshot({ path: path.join(shotDir, "1-on.png") });
@@ -145,7 +153,7 @@ const products = require("./fixtures/products-2026-10-28.json");
   const back = await p.$$eval(".s-main-slot > [data-asin]:not(.dsa-dupe)", els => els.map(e => +e.dataset.dsaTier));
   check("Featured order is re-sorted by trust", back.every((t, i) => i === 0 || back[i - 1] >= t));
 
-  // 10. Disenshittified entries in Amazon's Sort by menu
+  // 10. AmazonPlus entries in Amazon's Sort by menu
   const prompt = () => p.textContent(".a-dropdown-prompt");
   const status = () => p.textContent("#dsa-toggle .dsa-status");
   const asinOrder = () => p.$$eval(".s-main-slot > [data-asin]", els => els.map(e => e.dataset.asin).join(","));
@@ -155,17 +163,17 @@ const products = require("./fixtures/products-2026-10-28.json");
   const pick = async label => { await p.click(`#a-popover-3 a:text-is('${label}')`); await p.waitForTimeout(150); };
 
   check("The box has no extra switches", !(await p.$("#dsa-toggle .dsa-unit-switch")) && (await p.$$("#dsa-toggle input")).length === 1);
-  check("A fresh search shows 'Sort by: Disenshittified: Trust'", (await prompt()) === "Disenshittified: Trust");
+  check("A fresh search shows 'Sort by: AmazonPlus: Trust'", (await prompt()) === "AmazonPlus: Trust");
   const entries = await openMenu();
-  check("Menu lists both Disenshittified entries last", entries.slice(-2).join(" | ") === "Disenshittified: Trust | Disenshittified: $/count", entries.join(" | "));
-  check("…with Trust marked as current", (await p.$$eval("#a-popover-3 a.a-active", as => as.map(a => a.textContent))).join() === "Disenshittified: Trust");
+  check("Menu lists both AmazonPlus entries last", entries.slice(-2).join(" | ") === "AmazonPlus: Trust | AmazonPlus: $/count", entries.join(" | "));
+  check("…with Trust marked as current", (await p.$$eval("#a-popover-3 a.a-active", as => as.map(a => a.textContent))).join() === "AmazonPlus: Trust");
 
   // $/count
   const urlBefore = p.url();
-  await pick("Disenshittified: $/count");
+  await pick("AmazonPlus: $/count");
   check("Picking $/count doesn't navigate", p.url() === urlBefore);
   check("Menu closes after picking", !(await p.$("#a-popover-3")));
-  check("Sort by label shows $/count", (await prompt()) === "Disenshittified: $/count");
+  check("Sort by label shows $/count", (await prompt()) === "AmazonPlus: $/count");
   const unitRows = await p.$$eval(".s-main-slot > [data-asin]:not(.dsa-dupe)", els => els.map(e => {
     return e.dataset.dsaUnit || "";
   }));
@@ -179,7 +187,7 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Colours and badges kept", (await p.$$(".s-main-slot > [data-asin]:not(.dsa-dupe) .dsa-badge")).length === 51);
   check("Status says ordered by $/count", /ordered by \$\/count/.test(await status()));
   await load("baguette pan");
-  check("$/count stays chosen on the next search", (await prompt()) === "Disenshittified: $/count" && /ordered by \$\/count/.test(await status()));
+  check("$/count stays chosen on the next search", (await prompt()) === "AmazonPlus: $/count" && /ordered by \$\/count/.test(await status()));
 
   // Featured = Amazon's real Featured order, for this search
   await openMenu();
@@ -189,26 +197,26 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("…and stays Featured for that search", (await prompt()) === "Featured" && (await asinOrder()) === amazonOrder);
   await load("french bread pan");
   const fresh = await tiersShown();
-  check("A new search goes back to Disenshittified: Trust", (await prompt()) === "Disenshittified: Trust" && fresh.every((t, i) => i === 0 || fresh[i - 1] >= t));
+  check("A new search goes back to AmazonPlus: Trust", (await prompt()) === "AmazonPlus: Trust" && fresh.every((t, i) => i === 0 || fresh[i - 1] >= t));
 
-  // On one of Amazon's other sorts, Disenshittified: Trust is one click away
+  // On one of Amazon's other sorts, AmazonPlus: Trust is one click away
   await openMenu();
   await Promise.all([p.waitForNavigation(), pick("Avg. Customer Review")]);
   await inject();
   check("Amazon's sort loads normally", /s=review-rank/.test(p.url()) && (await prompt()) === "Avg. Customer Review" && /Amazon's order/.test(await status()));
   const urlReview = p.url();
   await openMenu();
-  await pick("Disenshittified: Trust");
+  await pick("AmazonPlus: Trust");
   const trustNow = await tiersShown();
-  check("Picking Disenshittified: Trust there re-sorts by trust, no reload", p.url() === urlReview &&
-    (await prompt()) === "Disenshittified: Trust" && trustNow.every((t, i) => i === 0 || trustNow[i - 1] >= t));
+  check("Picking AmazonPlus: Trust there re-sorts by trust, no reload", p.url() === urlReview &&
+    (await prompt()) === "AmazonPlus: Trust" && trustNow.every((t, i) => i === 0 || trustNow[i - 1] >= t));
   await openMenu();
   await pick("Avg. Customer Review");
   check("Picking that page's own sort again returns to Amazon's order", (await asinOrder()) === amazonOrder && (await prompt()) === "Avg. Customer Review");
 
-  // Turning Disenshittify off removes the entries
+  // Turning AmazonPlus off removes the entries
   await p.click("#dsa-toggle .dsa-switch");
-  check("Disenshittify off removes the menu entries", !(await p.$$eval("#s-result-sort-select option", os => os.map(o => o.value))).some(v => v.startsWith("dsa-")));
+  check("AmazonPlus off removes the menu entries", !(await p.$$eval("#s-result-sort-select option", os => os.map(o => o.value))).some(v => v.startsWith("dsa-")));
   await p.click("#dsa-toggle .dsa-switch");
 
   // 11. Leftover v0.1 setting in amazon.com's localStorage is moved and deleted
@@ -230,13 +238,13 @@ const products = require("./fixtures/products-2026-10-28.json");
   };
   await product("B0D2NG692S");
   const pav = await p.textContent("#dsa-product");
-  check("Product page shows a Disenshittify panel under the title", await p.$eval("#dsa-product", e => e.previousElementSibling && e.previousElementSibling.id === "titleSection"));
+  check("Product page shows a AmazonPlus panel under the title", await p.$eval("#dsa-product", e => e.previousElementSibling && e.previousElementSibling.id === "titleSection"));
   check("…comparing with the search-results estimate", pav.includes(`Search results:`) && pav.includes(`· ${pavBefore}`), pav.slice(0, 140));
   await p.click("#dsa-product .dsa-ph-details summary");
   const pavDetails = await p.textContent("#dsa-product .dsa-ph-details");
   check("…and listing what the product page showed", /bracketed/.test(pavDetails) && /Marketing language in bullet points/.test(pavDetails), pavDetails.slice(0, 160));
   check("A score already at 0 shows no change, and says why", (await p.textContent("#dsa-product .dsa-ph-delta")) === "–" && /already at the bottom/.test(pav), pav.slice(0, 160));
-  check("Change sits right of the Trust pill; Disenshittify is right-aligned", await p.$eval("#dsa-product .dsa-ph-head", h => {
+  check("Change sits right of the Trust pill; AmazonPlus is right-aligned", await p.$eval("#dsa-product .dsa-ph-head", h => {
     const [pill, d, t] = h.children; const hr = h.getBoundingClientRect(), pr = pill.getBoundingClientRect(), dr = d.getBoundingClientRect(), tr = t.getBoundingClientRect();
     return d.classList.contains("dsa-ph-delta") && dr.left >= pr.right && dr.right < tr.left && hr.right - tr.right < 2; }));
   check("No toggle box on product pages", !(await p.$("#dsa-toggle")));
@@ -273,7 +281,7 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Checked listings are marked ✓ in the results", pavAfter.includes("✓") && cmAfter.includes("✓"), pavAfter + " | " + cmAfter);
   await p.click('[data-asin="B0D2NG692S"] .dsa-badge summary');
   check("…with the product-page check in the reasons", /Checked on its product page/.test(await p.textContent('[data-asin="B0D2NG692S"] .dsa-badge')));
-  // Books, films, TV, music and games: no Disenshittify at all
+  // Books, films, TV, music and games: no AmazonPlus at all
   const mediaLoad = async (n) => {
     await p.goto("https://www.amazon.com/s?k=baguette+tray&media=" + n);
     await p.evaluate(n => [...document.querySelectorAll('div[data-component-type="s-search-result"]')].slice(0, n)
@@ -355,7 +363,7 @@ const products = require("./fixtures/products-2026-10-28.json");
   };
   await scanPage(true);
   const scanBtn = async () => p.textContent("#dsa-toggle .dsa-scan");
-  check("Price scan: a button in the Disenshittify box, nothing looked up until it's pressed",
+  check("Price scan: a button in the AmazonPlus box, nothing looked up until it's pressed",
     (await scanBtn()) === "Scan for off-Amazon prices: 0/20 used so far today" && (await p.evaluate(() => window.__gmReqs.length)) === 0, await scanBtn());
   const scanIdle = () => p.waitForFunction(() => !/^Checking/.test(document.querySelector("#dsa-toggle .dsa-scan-note").textContent), null, { timeout: 30000 });
   const scrollAll = async () => { for (let y = 0; y < 12000; y += 700) { await p.evaluate(y => window.scrollTo(0, y), y); await p.waitForTimeout(120); } };
@@ -404,16 +412,63 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Daily limit: stops after the refused request and says when it resets", lim.reqs === 1 && /daily limit is used up \(resets in about 10 h\)/.test(lim.note) && /^Scan for off-Amazon prices: 20\/20/.test(lim.btn), JSON.stringify(lim));
   await p.evaluate(() => { localStorage.removeItem("gm:dsaOffPrices"); localStorage.removeItem("gm:dsaUpcUsage"); });
   await load("baguette tray");
-  // The Disenshittify box stays in view while you scroll, and goes back into the column at the top
+  // The AmazonPlus box stays in view while you scroll, and goes back into the column at the top
   const boxAt = () => p.evaluate(() => { const t = document.getElementById("dsa-toggle"), r = t.getBoundingClientRect();
     return { top: Math.round(r.top), left: Math.round(r.left), w: Math.round(r.width), float: t.classList.contains("dsa-float") }; });
   const home = await boxAt();
   await p.evaluate(() => window.scrollTo(0, 3000)); await p.waitForTimeout(300);
   const away = await boxAt();
-  check("Disenshittify box floats at the top of the window when you scroll down", away.float && away.top >= 0 && away.top < 20 && away.left === home.left && away.w === home.w, JSON.stringify([home, away]));
+  check("AmazonPlus box floats at the top of the window when you scroll down", away.float && away.top >= 0 && away.top < 20 && away.left === home.left && away.w === home.w, JSON.stringify([home, away]));
   await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(300);
   const settled = await boxAt();
   check("…and settles back into the column at the top", !settled.float && settled.top === home.top && settled.left === home.left, JSON.stringify([home, settled]));
+  check("Floating box has no scrollbar of its own when it fits", await p.evaluate(async () => { window.scrollTo(0, 3000); await new Promise(r => setTimeout(r, 300));
+    const t = document.getElementById("dsa-toggle"); return t.classList.contains("dsa-float") && getComputedStyle(t).overflowY === "visible"; }));
+  // Amazon's sticky search bar (shown when you scroll back up): the box sits below it, not over it
+  const underBar = await p.evaluate(async () => {
+    const bar = document.createElement("div"); bar.id = "fake-sticky"; bar.style.cssText = "position:fixed;top:0;left:0;right:0;height:60px;background:#232f3e;z-index:250";
+    document.body.appendChild(bar); window.scrollBy(0, -50); await new Promise(r => setTimeout(r, 300));
+    const top = Math.round(document.getElementById("dsa-toggle").getBoundingClientRect().top);
+    bar.remove(); window.scrollBy(0, 40); await new Promise(r => setTimeout(r, 300));
+    return { top, after: Math.round(document.getElementById("dsa-toggle").getBoundingClientRect().top) };
+  });
+  check("…and sits below Amazon's sticky search bar when it shows, back at the top when it goes", underBar.top >= 60 && underBar.top < 80 && underBar.after < 20, JSON.stringify(underBar));
+  await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(300);
+  // Tile view: whatever layout Amazon picked (here: its row-by-row list, with a picture column that
+  // insists on a 498px minimum width), results show as a grid of cards
+  // Amazon's list markup: photo column (status label above photos of different heights), text column
+  await p.evaluate(() => {
+    const slot = document.querySelector(".s-main-slot"); slot.style.display = "block";
+    [...slot.querySelectorAll('div[data-component-type="s-search-result"]')].forEach((c, i) => {
+      c.style.width = "100%";
+      const box = c.querySelector(".s-card-container");
+      const title = box.querySelector('[data-cy="title-recipe"]');
+      box.querySelector("img.s-image").remove();
+      const row = document.createElement("div"); row.className = "puisg-row"; row.style.display = "flex";
+      row.innerHTML = '<div class="puisg-col" style="min-width:249px;width:249px"><div class="puisg-col-inner">' +
+        '<div class="a-section puis-status-badge-container s-list-status-badge-container">' + (i % 3 === 0 ? '<span class="a-badge" style="display:block;height:18px">Best Seller</span>' : "") + '</div>' +
+        '<div class="s-product-image-container"><img class="s-image" alt="" style="display:block;width:150px;height:' + (90 + (i % 4) * 50) + 'px;background:#eee"></div></div></div>' +
+        '<div class="puisg-col" style="min-width:498px;width:498px"><div class="puisg-col-inner"></div></div>';
+      row.lastChild.firstChild.appendChild(title);
+      box.prepend(row);
+    });
+  });
+  const tiles = await p.evaluate(() => {
+    const cs = [...document.querySelectorAll('.s-main-slot > div[data-component-type="s-search-result"]')].filter(c => c.offsetParent);
+    const tops = new Map(); cs.forEach(c => { const t = Math.round(c.getBoundingClientRect().top); tops.set(t, (tops.get(t) || 0) + 1); });
+    const slot = document.querySelector(".s-main-slot").getBoundingClientRect();
+    const pager = document.getElementById("pager").getBoundingClientRect();
+    const offs = new Map(); cs.forEach(c => { const t = Math.round(c.getBoundingClientRect().top); const o = Math.round(c.querySelector('.puisg-row > .puisg-col:last-child').getBoundingClientRect().top) - t;
+      offs.set(t, (offs.get(t) || new Set()).add(o)); });
+    return { on: document.documentElement.classList.contains("dsa-tiles"), perRow: Math.max(...tops.values()), titleSpread: Math.max(...[...offs.values()].map(v => Math.max(...v) - Math.min(...v))),
+      widest: Math.round(Math.max(...cs.map(c => c.getBoundingClientRect().width))), slotW: Math.round(slot.width), pagerFull: pager.width > slot.width * 0.9 };
+  });
+  check("Tile view: results laid out as rows of cards, the cards' insides stacked to fit", tiles.on && tiles.perRow >= 3 && tiles.widest < 320, JSON.stringify(tiles));
+  check("…with pagination across the full width below them", tiles.pagerFull, JSON.stringify(tiles));
+  check("…titles line up across each row, whatever the photo height or a 'Best Seller' label", tiles.titleSpread <= 1, JSON.stringify(tiles));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  check("…and AmazonPlus off gives Amazon's own layout back", !(await p.evaluate(() => document.documentElement.classList.contains("dsa-tiles"))));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
   // Greasemonkey 4: only the async GM.* API, which stores strings/numbers/booleans
   const GM4_SHIM = `
     window.__gm4 = window.__gm4 || {};
@@ -446,13 +501,69 @@ const products = require("./fixtures/products-2026-10-28.json");
   const mob = await p.evaluate(() => { const d = document.querySelector("#dsa-product .dsa-ph-details"); if (d) d.open = true; return d ? d.textContent : null; });
   check("Mobile product page: panel shows, reading the mobile title, rating and seller", mob && /Sold by Amazon\.com/.test(mob) && /Exact review count: 4,101/.test(mob), (mob || "no panel").slice(0, 200));
   await load("baguette tray");
-  // Turning Disenshittify off also turns off product pages
+  // Contrast: every text the script draws is at least 4.5:1, on Amazon's light pages and in dark mode
+  const contrastAudit = () => p.evaluate(() => {
+    const rgb = c => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(c); return m ? { c: [+m[1], +m[2], +m[3]], a: m[4] === undefined ? 1 : +m[4] } : null; };
+    const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const bgOf = el => { for (let n = el; n; n = n.parentElement) { const b = rgb(getComputedStyle(n).backgroundColor); if (b && b.a > 0.5) return b.c; } return [255, 255, 255]; };
+    const ratio = el => { const fg = rgb(getComputedStyle(el).color).c, bg = bgOf(el); const x = lum(fg), y = lum(bg); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    const sel = ["#dsa-toggle .dsa-label", "#dsa-toggle .dsa-status", "#dsa-toggle .dsa-manage", "#dsa-toggle .dsa-scan",
+      ".dsa-rated h2 span", ".dsa-badge > summary", ".dsa-found .dsa-found-main"];
+    const out = {};
+    for (const s of sel) { const els = [...document.querySelectorAll(s)].filter(e => e.offsetParent || e.closest(".dsa-float")); if (els.length) out[s] = Math.min(...els.map(ratio)).toFixed(2); }
+    return { dark: document.documentElement.classList.contains("dsa-dark"), out };
+  });
+  await load("baguette tray");
+  await p.evaluate(() => { localStorage.setItem("gm:dsaOffPrices", JSON.stringify({})); });
+  const lightAudit = await contrastAudit();
+  const lightLow = Object.entries(lightAudit.out).filter(([, v]) => +v < 4.5);
+  check("Light pages: all script text at least 4.5:1", !lightAudit.dark && !lightLow.length && Object.keys(lightAudit.out).length >= 5, JSON.stringify(lightAudit));
+  await p.goto("https://www.amazon.com/s?k=baguette+tray");
+  await p.addStyleTag({ content: "html, body { background: #131921 !important; color: #e3e6e6 !important; } h2, h2 span, a { color: #e3e6e6 !important; }" });
+  await p.evaluate(GM_SHIM);
+  await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
+  await p.waitForSelector(".dsa-badge");
+  const darkAudit = await contrastAudit();
+  const darkLow = Object.entries(darkAudit.out).filter(([, v]) => +v < 4.5);
+  check("Amazon dark mode: detected, and all script text at least 4.5:1 (Amazon's light text on tinted cards too)", darkAudit.dark && !darkLow.length && Object.keys(darkAudit.out).length >= 5, JSON.stringify(darkAudit));
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "9-dark.png"), clip: { x: 0, y: 0, width: 1100, height: 700 } });
+  await load("baguette tray");
+  // Going to page 2: Amazon swaps the results in place. Page 1 must not come back.
+  for (const order of ["add-then-remove", "remove-then-add"]) {
+    await load("baguette tray");
+    await p.evaluate(async order => {
+      const slot = document.querySelector(".s-main-slot");
+      const old = [...slot.querySelectorAll('div[data-component-type="s-search-result"]')];
+      const fresh = old.map((c, i) => { const n = c.cloneNode(true); n.removeAttribute("data-dsa-scored"); n.className = "s-result-item";
+        n.querySelectorAll(".dsa-badge, .dsa-found").forEach(b => b.remove()); n.querySelectorAll(".dsa-paint").forEach(e => e.classList.remove("dsa-paint"));
+        n.dataset.asin = "B0PAGE2" + String(i).padStart(3, "0"); n.dataset.page2 = "1"; return n; });
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const late = fresh.pop();   // Amazon adds the last result a little later, which makes the script run again
+      // Page 2 comes with one promo block of its own
+      const promo = document.createElement("div"); promo.innerHTML = '<img src="data:,"> Sponsored brand video'; fresh.unshift(promo);
+      if (order === "add-then-remove") { fresh.forEach(n => slot.appendChild(n)); await wait(1000); old.forEach(c => c.remove()); }
+      else { old.forEach(c => c.remove()); await wait(1000); fresh.forEach(n => slot.appendChild(n)); }
+      if (order === "remove-then-add") { await wait(1000); slot.appendChild(late); }
+    }, order);
+    await p.waitForTimeout(1200);
+    // Then something makes the script re-sort (here: trusting a brand from a badge)
+    await p.click('div[data-page2] .dsa-badge > summary');
+    await p.click('div[data-page2] .dsa-badge[open] .dsa-btn.dsa-trust');
+    await p.waitForTimeout(600);
+    const pg = await p.evaluate(() => { const cs = [...document.querySelectorAll('div[data-component-type="s-search-result"]')];
+      return { total: cs.length, page2: cs.filter(c => c.dataset.page2).length, rated: cs.filter(c => c.dataset.page2 && c.querySelector(".dsa-badge")).length }; });
+    check(`Page 2 (${order}): only page 2's results, all rated — page 1 doesn't come back`, pg.total === pg.page2 && pg.page2 > 20 && pg.rated === pg.page2, JSON.stringify(pg));
+    const st2 = await p.textContent("#dsa-toggle .dsa-status");
+    check(`…and the promo count is page 2's own, not added to page 1's`, /· 1 promo removed/.test(st2), st2);
+  }
+  await load("baguette tray");
+  // Turning AmazonPlus off also turns off product pages
   await p.click("#dsa-toggle .dsa-switch");
   await p.goto("https://www.amazon.com/dp/B0002D00H8");
   await p.evaluate(GM_SHIM);
   await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
   await p.waitForTimeout(400);
-  check("Disenshittify off: no product-page panel", !(await p.$("#dsa-product")));
+  check("AmazonPlus off: no product-page panel", !(await p.$("#dsa-product")));
 
   check("No script errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();

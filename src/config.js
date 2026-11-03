@@ -1,11 +1,14 @@
-// Disenshittify Amazon — tunable lists and weights.
+// AmazonPlus — tunable lists and weights.
 // Edit these to adjust how listings are scored. All matching is case-insensitive.
 
 var DSA_CONFIG = {
   // Hide promo / ad blocks between results (Haul carousels, brand banners, video ads…) while on.
   hideClutter: true,
 
-  // "Scan for off-Amazon prices" (button in the Disenshittify box): looks up listings with a manufacturer
+  // Show search results as tiles (a grid of cards) whatever layout Amazon picked, while on.
+  tiles: true,
+
+  // "Scan for off-Amazon prices" (button in the AmazonPlus box): looks up listings with a manufacturer
   // model number on UPCitemdb's free plan and shows "Found at MERCHANT for PRICE". Userscript only.
   priceCheck: {
     enabled: true,

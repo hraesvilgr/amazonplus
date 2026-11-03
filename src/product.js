@@ -1,4 +1,4 @@
-// Disenshittify Amazon — product pages.
+// AmazonPlus — product pages.
 // extractProduct(document) reads what a product page offers beyond the search results card;
 // refineScore(initial, product, cfg, bigrams) turns the search-results estimate into a better one
 // and says exactly what changed. extractProduct needs a DOM; refineScore is pure (runs in Node tests).

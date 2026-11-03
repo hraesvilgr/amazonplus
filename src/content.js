@@ -1,4 +1,4 @@
-// Disenshittify Amazon — content script for search results pages.
+// AmazonPlus — content script for search results pages.
 // Adds a toggle above the left-hand filters. When on, every result card is scored,
 // tinted green → yellow → red by trust, and the results are re-sorted most-trusted first.
 // Each card's badge lets you trust or block its brand; brands are also learned across searches.
@@ -232,9 +232,33 @@
 
   // ---------- decoration ----------
 
+  // Tints for a score: card background, edge stripe, text ink, and the Trust pill (white text on it).
+  // All text/background pairs are at least 4.5:1. On a dark page (Amazon's dark mode), dark tints
+  // with light text, so Amazon's own light text stays readable on the card.
   function colorsFor(score) {
     const hue = Math.round(Math.max(0, Math.min(100, score)) * 1.2); // 0 red → 60 yellow → 120 green
-    return { bg: `hsl(${hue} 78% 91%)`, edge: `hsl(${hue} 70% 40%)`, ink: `hsl(${hue} 60% 22%)` };
+    return darkPage
+      ? { bg: `hsl(${hue} 30% 17%)`, edge: `hsl(${hue} 60% 45%)`, ink: `hsl(${hue} 70% 78%)`, pill: `hsl(${hue} 70% 27%)` }
+      : { bg: `hsl(${hue} 78% 94%)`, edge: `hsl(${hue} 70% 40%)`, ink: `hsl(${hue} 60% 22%)`, pill: `hsl(${hue} 75% 27%)` };
+  }
+
+  // Is Amazon showing a dark page? Judged from the colour actually behind the results (or the
+  // product page), so it follows Amazon's own dark mode whatever triggered it.
+  let darkPage = false;
+  function checkDark() {
+    let node = document.querySelector(CARD_SEL + ", #dp, #ppd") || document.body;
+    let bg = null;
+    for (; node && node.nodeType === 1; node = node.parentElement) {
+      const c = getComputedStyle(node).backgroundColor;
+      const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(c || "");
+      if (m && (m[4] === undefined || +m[4] > 0.5)) { bg = [+m[1], +m[2], +m[3]]; break; }
+    }
+    if (!bg) { const c = getComputedStyle(document.documentElement).backgroundColor; const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(c || ""); bg = m && (m[4] === undefined || +m[4] > 0.5) ? [+m[1], +m[2], +m[3]] : [255, 255, 255]; }
+    const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const was = darkPage;
+    darkPage = 0.2126 * lin(bg[0]) + 0.7152 * lin(bg[1]) + 0.0722 * lin(bg[2]) < 0.2;
+    document.documentElement.classList.toggle("dsa-dark", darkPage);
+    return darkPage !== was;
   }
 
   function paintTarget(card) {
@@ -267,6 +291,7 @@
       node.style.setProperty("--dsa-bg", c.bg);
       node.style.setProperty("--dsa-edge", c.edge);
       node.style.setProperty("--dsa-ink", c.ink);
+      node.style.setProperty("--dsa-pill", c.pill);
     }
 
     const up = result.listing && result.listing.unitPrice;
@@ -370,6 +395,7 @@
     panel.style.setProperty("--dsa-bg", c.bg);
     panel.style.setProperty("--dsa-edge", c.edge);
     panel.style.setProperty("--dsa-ink", c.ink);
+    panel.style.setProperty("--dsa-pill", c.pill);
 
     // The change in score from the estimate this page started from: the search-results rating, or,
     // for a page opened directly, the rating from its title, stars and review count alone.
@@ -382,7 +408,7 @@
     const head = el("div", { class: "dsa-ph-head" },
       el("span", { class: "dsa-ph-pill" }, `Trust ${refined.tier}/5`, el("span", { class: "dsa-score" }, ` · ${refined.score}`)),
       el("span", { class: "dsa-ph-delta " + cls, title: deltaTip }, deltaText),
-      el("span", { class: "dsa-ph-title" }, "Disenshittify"));
+      el("span", { class: "dsa-ph-title" }, "AmazonPlus"));
     let compare;
     if (!init) {
       compare = el("div", { class: "dsa-ph-compare" }, "Not in your recent search results — rated from this page.",
@@ -450,6 +476,7 @@
     if (!enabled) { if (old) old.remove(); return; }
     const anchor = document.querySelector("#titleSection, #title_feature_div, #title");
     if (!anchor || !PRODUCT.productTitle(document)) return;
+    checkDark();
     if (PRODUCT.isMediaPage(document)) { if (old) old.remove(); return; }   // books, films, TV, music, games
     try {
       const product = PRODUCT.extractProduct(document);
@@ -473,16 +500,16 @@
       if (old) old.replaceWith(panel); else anchor.insertAdjacentElement("afterend", panel);
     } catch (e) {
       // Never fail silently: say so on the page, with the error, so it can be reported.
-      console.error("[Disenshittify] product page:", e);
+      console.error("[AmazonPlus] product page:", e);
       const panel = el("div", { id: "dsa-product", class: "dsa-product dsa-product-error" },
-        el("div", { class: "dsa-ph-head" }, el("span", { class: "dsa-ph-title" }, "Disenshittify")),
+        el("div", { class: "dsa-ph-head" }, el("span", { class: "dsa-ph-title" }, "AmazonPlus")),
         el("div", { class: "dsa-ph-compare" }, "Couldn't rate this page: " + (e && e.message || e)));
       if (old) old.replaceWith(panel); else anchor.insertAdjacentElement("afterend", panel);
     }
   }
 
   // ---------- "Found at MERCHANT for PRICE" (off-Amazon price scan, UPCitemdb) ----------
-  // Nothing is looked up automatically. "Scan for off-Amazon prices" in the Disenshittify box looks up
+  // Nothing is looked up automatically. "Scan for off-Amazon prices" in the AmazonPlus box looks up
   // listings anywhere on Amazon that have a manufacturer model number and cost over $30, one at a time,
   // on UPCitemdb's free plan (100 requests a day per connection, no sign-up), as they scroll into view,
   // and shows the cheapest identical item sold new elsewhere. Results are kept for 72 hours.
@@ -663,19 +690,19 @@
           usage.used = Math.max(usage.limit, PC.searchLimit || 20); storeSet(KEY_PRICE_USAGE, usage);
           scanOn = false; scanQueue.length = 0; scanQueued.clear();
           scanNote = scanSummary(`UPCitemdb's free daily limit is used up${!isNaN(after) ? ` (resets in about ${Math.ceil(after / 3600)} h)` : ""}.`);
-          console.info("[Disenshittify] price scan: daily limit reached", res.text.slice(0, 200));
+          console.info("[AmazonPlus] price scan: daily limit reached", res.text.slice(0, 200));
           break;
         }
         let json = null;
         try { json = JSON.parse(res.text); } catch (e) { /* not JSON */ }
         if (res.status !== 200 || !json || json.code !== "OK") {
           scanQueued.delete(q);   // try again if it comes back into view
-          console.info(`[Disenshittify] price scan: ${q} — no answer (HTTP ${res.status}${json && json.code ? ", " + json.code : ""})`);
+          console.info(`[AmazonPlus] price scan: ${q} — no answer (HTTP ${res.status}${json && json.code ? ", " + json.code : ""})`);
         } else {
           const f = PRICECHECK.pickOffer(json, pq.model, pq.title, Date.now(), PC.maxOfferAgeDays || 60);
           prices[q] = { at: Date.now(), f: f ? { m: f.m, p: f.p, u: f.u, at: f.at } : 0 };
           if (f) scanTally.found++; else scanTally.none++;
-          console.info(`[Disenshittify] price scan: ${q} — ${(json.items || []).length} products; ` + (f ? `cheapest identical: ${f.m} ${f.p}` : "no identical item sold new elsewhere"));
+          console.info(`[AmazonPlus] price scan: ${q} — ${(json.items || []).length} products; ` + (f ? `cheapest identical: ${f.m} ${f.p}` : "no identical item sold new elsewhere"));
           renderPriceFor(q);
           savePrices();
         }
@@ -755,7 +782,7 @@
   function cards() { return [...document.querySelectorAll(CARD_SEL)].filter(c => c.dataset.asin); }
 
   // Books, films, TV, music and games aren't rated. A search where nearly everything (80%+) is
-  // media gets no Disenshittify at all; on mixed pages the media results are just left alone.
+  // media gets no AmazonPlus at all; on mixed pages the media results are just left alone.
   function isMedia(card) {
     if (card.dataset.dsaMedia === undefined) card.dataset.dsaMedia = PRODUCT.isMediaCard(card) ? "1" : "";
     return card.dataset.dsaMedia === "1";
@@ -771,14 +798,19 @@
     applying = true;
     try {
       list.forEach(undecorate);
+      checkDark();
 
       // Amazon can split results across several containers; the main slot receives the sorted list.
       const slot = document.querySelector(".s-main-slot") || list[0].parentElement;
       const parents = new Set(list.map(c => c.parentElement).concat(slot));
       // Snapshot the original order of every container involved, unless we already hold one for these cards.
-      if (!snapshot || list.some(c => !snapshot.cards.has(c))) {
+      // (Also when Amazon swapped the results in place, e.g. going to page 2: its old cards are gone.)
+      if (!snapshot || list.some(c => !snapshot.cards.has(c)) || [...snapshot.cards].some(c => !c.isConnected)) {
+        // A new set of results (e.g. page 2 swapped in, most cards new): the promo count starts again.
+        if (snapshot && list.filter(c => !snapshot.cards.has(c)).length >= list.length / 3) promosRemoved = 0;
         snapshot = { order: new Map([...parents].map(p => [p, [...p.children]])), cards: new Set(list) };
       }
+      setTiles(true);
 
       const media = list.filter(isMedia);
       const rated = list.filter(c => !isMedia(c));
@@ -847,12 +879,19 @@
     }
   }
 
+  // Tile view: the results grid becomes rows of cards (styles.css, html.dsa-tiles), whatever layout
+  // Amazon chose for the search. Off again when AmazonPlus is switched off.
+  function setTiles(on) {
+    document.documentElement.classList.toggle("dsa-tiles", !!on && CFG.tiles !== false);
+  }
+
   // Put every result back where Amazon had it (without touching colours or badges).
   function restoreOrder() {
     if (!snapshot) return;
     for (const [parent, children] of snapshot.order) {
       if (!parent.isConnected) continue;
-      for (const node of children) if (node.isConnected || snapshot.cards.has(node)) parent.appendChild(node);
+      // Only nodes still on the page: cards Amazon has taken away (page 2 replacing page 1) stay gone.
+      for (const node of children) if (node.isConnected) parent.appendChild(node);
     }
   }
 
@@ -879,9 +918,11 @@
       if (snapshot) {
         for (const [parent, children] of snapshot.order) {
           if (!parent.isConnected) continue;
-          for (const node of children) if (node.isConnected || snapshot.cards.has(node)) parent.appendChild(node);
+          // Only nodes still on the page: cards Amazon has taken away (page 2 replacing page 1) stay gone.
+      for (const node of children) if (node.isConnected) parent.appendChild(node);
         }
       }
+      setTiles(false);
       snapshot = null;
       lastResults = null;
       updateStatus(null);
@@ -890,18 +931,18 @@
     }
   }
 
-  // ---------- Disenshittified entries in Amazon's Sort by menu ----------
+  // ---------- AmazonPlus entries in Amazon's Sort by menu ----------
   // Amazon's menu is a hidden <select id="s-result-sort-select"> whose options Amazon copies into
   // the visible pop-up list each time it opens, so adding <option>s puts entries in the menu.
   // Picking one is caught before Amazon navigates; it re-orders the results already on the page.
   //
-  //   Disenshittified: Trust   — most trusted first. Also what a fresh search shows by default.
-  //   Disenshittified: $/count — cheapest per unit first.
+  //   AmazonPlus: Trust   — most trusted first. Also what a fresh search shows by default.
+  //   AmazonPlus: $/count — cheapest per unit first.
   //   Amazon's own sorts       — Amazon's order, with colours and badges. Picking "Featured" shows
   //                              Amazon's real Featured order for that search.
-  // A Disenshittified choice stays until you pick one of Amazon's sorts.
-  const SORTS = { trust: { value: "dsa-trust", label: "Disenshittified: Trust" },
-                  unit:  { value: "dsa-unit",  label: "Disenshittified: $/count" } };
+  // A AmazonPlus choice stays until you pick one of Amazon's sorts.
+  const SORTS = { trust: { value: "dsa-trust", label: "AmazonPlus: Trust" },
+                  unit:  { value: "dsa-unit",  label: "AmazonPlus: $/count" } };
   const OUR_VALUES = new Set(Object.values(SORTS).map(x => x.value));
 
   function sortSelect() { return document.getElementById("s-result-sort-select"); }
@@ -1046,12 +1087,14 @@
       status.textContent = promosRemoved ? "Off · reload to bring back the hidden promos" : "Off";
     }
     else {
-      // Count what's actually on screen (hidden repeat placements don't count).
-      const visible = cards().filter(c => c.dataset.dsaScored && !c.classList.contains("dsa-dupe"));
+      // Count what's actually on screen: hidden repeat placements don't count, and neither do cards an
+      // ad blocker hides (uBlock Origin hides sponsored results with display:none; they're still rated).
+      const shown = c => c.getClientRects().length > 0;
+      const visible = cards().filter(c => c.dataset.dsaScored && !c.classList.contains("dsa-dupe") && shown(c));
       const tiers = [0, 0, 0, 0, 0, 0];
       for (const c of visible) tiers[+c.dataset.dsaTier]++;
       const extras = [];
-      const media = cards().filter(c => c.dataset.dsaMedia === "1").length;
+      const media = cards().filter(c => c.dataset.dsaMedia === "1" && shown(c)).length;
       if (media) extras.push(`${media} book${media === 1 ? "" : "s"}/media not rated`);
       if (hidden) extras.push(`${hidden} promo${hidden === 1 ? "" : "s"} removed`);
       if (mode === "amazon") extras.push("Amazon's order");
@@ -1148,7 +1191,7 @@
       el("label", { class: "dsa-switch" },
         input,
         el("span", { class: "dsa-track" }, el("span", { class: "dsa-thumb" })),
-        el("span", { class: "dsa-label" }, "Disenshittify")),
+        el("span", { class: "dsa-label" }, "AmazonPlus")),
       el("div", { class: "dsa-status" }, "Off"),
       el("div", { class: "dsa-legend", "aria-hidden": "true" }, el("span")),
       el("div", { class: "dsa-scanbox", hidden: "" },
@@ -1180,18 +1223,40 @@
     floatToggle(toggle);
   }
 
-  // Keep the Disenshittify box in view: once its place in the column scrolls off the top of the
+  // Keep the AmazonPlus box in view: once its place in the column scrolls off the top of the
   // window, it floats at the top of the window over the filter column (same position and width),
   // and settles back into place when you scroll up again.
   function floatToggle(toggle) {
     if (typeof IntersectionObserver !== "function") return;
     const spot = el("div", { class: "dsa-spot" });
     toggle.parentElement.insertBefore(spot, toggle);
+    // Amazon shows a sticky search bar at the top of the window when you scroll back up; the box
+    // sits just below it instead of covering it.
+    const headerBottom = x => {
+      let bottom = 0;
+      for (const n of document.elementsFromPoint ? document.elementsFromPoint(x, 2) : []) {
+        if (n === toggle || toggle.contains(n) || n === document.documentElement || n === document.body) continue;
+        for (let e = n; e && e !== document.body; e = e.parentElement) {
+          const pos = getComputedStyle(e).position;
+          if (pos === "fixed" || pos === "sticky") {
+            const r = e.getBoundingClientRect();
+            if (r.top <= 2 && r.height < innerHeight / 3) bottom = Math.max(bottom, r.bottom);
+            break;
+          }
+        }
+      }
+      return bottom;
+    };
     const place = () => {
       if (!toggle.classList.contains("dsa-float")) return;
       const r = spot.getBoundingClientRect();
       toggle.style.left = r.left + "px";
       toggle.style.width = r.width + "px";
+      const top = Math.round(headerBottom(r.left + r.width / 2)) + 8;
+      toggle.style.top = top + "px";
+      // Scrolls inside only when it's taller than the room left (e.g. the brand list is open).
+      toggle.style.maxHeight = (innerHeight - top - 8) + "px";
+      toggle.classList.toggle("dsa-float-tall", toggle.scrollHeight > innerHeight - top - 8);
     };
     new IntersectionObserver(([e]) => {
       const off = !e.isIntersecting && e.boundingClientRect.top < 0;
@@ -1201,21 +1266,37 @@
         toggle.classList.add("dsa-float");
         place();
       } else {
-        toggle.classList.remove("dsa-float");
-        toggle.style.left = toggle.style.width = "";
+        toggle.classList.remove("dsa-float", "dsa-float-tall");
+        toggle.style.left = toggle.style.width = toggle.style.top = toggle.style.maxHeight = "";
         spot.style.height = "";
       }
     }, { threshold: 0 }).observe(spot);
     window.addEventListener("resize", place, { passive: true });
+    let ticking = false;
+    window.addEventListener("scroll", () => {
+      if (ticking || !toggle.classList.contains("dsa-float")) return;
+      ticking = true;
+      requestAnimationFrame(() => { ticking = false; place(); });
+    }, { passive: true });
+    // Opening the brand list makes the box taller.
+    new MutationObserver(() => requestAnimationFrame(place)).observe(toggle, { attributes: true, subtree: true, attributeFilter: ["hidden", "open"] });
   }
 
   // ---------- keep up with Amazon's in-page updates ----------
 
   let pending = null;
+  // Waits for Amazon to settle (350 ms without changes), but never more than 800 ms after the first
+  // change: Amazon keeps the page busy (lazy images, ads) after swapping in page 2, and a pure
+  // "wait for quiet" left new results unrated until you scrolled.
+  let firstChangeAt = 0;
   function onMutations() {
     if (applying) return;
     clearTimeout(pending);
+    const now = Date.now();
+    if (!firstChangeAt) firstChangeAt = now;
+    const wait = Math.max(0, Math.min(350, 800 - (now - firstChangeAt)));
     pending = setTimeout(() => {
+      firstChangeAt = 0;
       if (isMediaSearch()) { leaveMediaSearch(); return; }
       placeToggle();
       const input = document.querySelector("#dsa-toggle .dsa-main");
@@ -1226,7 +1307,7 @@
         lastPromoCount = promosRemoved;
         updateStatus(lastResults, currentMode(), promosRemoved);
       }
-    }, 350);
+    }, wait);
   }
 
   // A search that turned into a media search (Amazon swapped the results in place): undo everything.
@@ -1259,8 +1340,16 @@
   document.addEventListener("click", noteClick, true);
   document.addEventListener("auxclick", noteClick, true);
 
+  // Amazon switching between light and dark while the page is open.
+  try {
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => setTimeout(() => {
+      if (!enabled) return;
+      if (PRODUCT.isProductPage(location)) runProductPage(false); else apply();
+    }, 300));
+  } catch (e) { /* old browsers */ }
+
   const INFO = typeof GM_info !== "undefined" ? GM_info : typeof GM !== "undefined" && GM && GM.info ? GM.info : null;
-  console.info("[Disenshittify] running on this page (v" + ((INFO && INFO.script && INFO.script.version) || "add-on") +
+  console.info("[AmazonPlus] running on this page (v" + ((INFO && INFO.script && INFO.script.version) || "add-on") +
     (INFO ? ", " + (INFO.scriptHandler || "userscript manager") + (INFO.injectInto ? ", " + INFO.injectInto + " mode" : "") : "") + ")");
   // v0.1 kept the on/off flag in amazon.com's own localStorage, where Amazon's scripts can see it.
   // Move it into the script's private storage and delete it from the site.

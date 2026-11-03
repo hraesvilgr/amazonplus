@@ -1,10 +1,12 @@
-# Disenshittify Amazon
+# AmazonPlus
+
+*(Formerly "Disenshittify Amazon".)*
 
 **[⬇ Install](https://github.com/hraesvilgr/disenshittify-amazon/raw/main/dist/disenshittify-amazon.user.js)** — needs the [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/) browser extension. Click the link, then **Install**.
 
 [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K4R529MTQE)
 
-A userscript (and Firefox extension) for Amazon search results. It adds a **Disenshittify** toggle at the top of the left-hand filter column. Turning it on:
+A userscript (and Firefox extension) for Amazon search results. It adds a **AmazonPlus** toggle at the top of the left-hand filter column. Turning it on:
 
 - gives every listing a trust score (0–100) and tier (1–5),
 - tints each card from green (trusted) through yellow to red (junk), with a coloured edge,
@@ -17,10 +19,10 @@ Inside each badge are **Trust** and **Block** buttons for that listing's brand. 
 
 **Sort by menu.** While the toggle is on, Amazon's own **Sort by** menu gets two extra entries:
 
-- **Disenshittified: Trust** — most trusted first. A fresh search shows this by default.
-- **Disenshittified: $/count** — cheapest per unit first, using Amazon's "($0.13/count)", "($2.99/ounce)". Compatible units are converted (pounds and grams → per ounce, millilitres and litres → per fl oz, inches → per foot); listings in the page's most common unit come first, then other units, then listings with no unit price. Subscription prices ("/month") are ignored.
+- **AmazonPlus: Trust** — most trusted first. A fresh search shows this by default.
+- **AmazonPlus: $/count** — cheapest per unit first, using Amazon's "($0.13/count)", "($2.99/ounce)". Compatible units are converted (pounds and grams → per ounce, millilitres and litres → per fl oz, inches → per foot); listings in the page's most common unit come first, then other units, then listings with no unit price. Subscription prices ("/month") are ignored.
 
-Picking either stays in effect on later searches until you pick one of Amazon's sorts. Amazon's sorts keep Amazon's order with the colours and badges; picking **Featured** shows Amazon's real Featured order for that search. Unlike Amazon's sorts, the Disenshittified ones re-order the results already on the page (each results page separately) and don't change the URL.
+Picking either stays in effect on later searches until you pick one of Amazon's sorts. Amazon's sorts keep Amazon's order with the colours and badges; picking **Featured** shows Amazon's real Featured order for that search. Unlike Amazon's sorts, the AmazonPlus ones re-order the results already on the page (each results page separately) and don't change the URL.
 
 **Product pages.** Click through to a listing and a panel under the title gives a better rating from what only the product page shows, compared with the search-results estimate. Next to the Trust pill, ▲12 / ▼17 / – shows how far the score moved (hover for from → to); opened without searching first, it compares against the rating from the title, stars and review count alone — and lists what changed:
 
@@ -34,13 +36,17 @@ If Amazon opens a different size or colour than the result you clicked (it often
 
 Back on the search results, a checked listing uses the refined rating for 30 days and its pill gets a ✓. Settings live in `productWeights` in `src/config.js`.
 
-**Scan for off-Amazon prices.** A button in the Disenshittify box — "Scan for off-Amazon prices: 2/20 used so far today" — starts a scan: every listing that has a manufacturer model number (e.g. "(DCF787D1)", "3453-20") and costs over $30 — in any department — is looked up in [UPCitemdb](https://www.upcitemdb.com)'s product database as it comes into view, one at a time, one request per listing, so results you never scroll to cost nothing. The button then reads "Stop scanning…"; the scan lasts until you stop it, leave the page, or reach the daily limit. If an identical item is sold elsewhere — the same model number with nothing else bundled (no accessory sets, no "W/ blower", no 2-packs, no batteries or parts that merely mention the model), new, in stock, by a US store other than Amazon or eBay, at a price UPCitemdb has seen in the last 60 days — the cheapest appears in a blue box beside the Amazon price: "Found at MERCHANT for PRICE", linked to that store's listing (through UPCitemdb's redirect), with "View Google Shopping results" underneath. Listings with nothing identical are left exactly as they are. Nothing is looked up unless you start a scan. UPCitemdb's free plan allows 100 requests a day per internet connection, but only 20 of them can be searches, and each listing takes one search, so the button counts against 20 (about 20 listings a day), with no sign-up; the count comes from UPCitemdb's own replies. Results are kept for 72 hours, so repeat searches don't spend requests on listings already checked. UPCitemdb's store prices can lag behind the stores' own — hover the box to see when the price was seen. Settings are in `priceCheck` in `src/config.js`.
+**Scan for off-Amazon prices.** A button in the AmazonPlus box — "Scan for off-Amazon prices: 2/20 used so far today" — starts a scan: every listing that has a manufacturer model number (e.g. "(DCF787D1)", "3453-20") and costs over $30 — in any department — is looked up in [UPCitemdb](https://www.upcitemdb.com)'s product database as it comes into view, one at a time, one request per listing, so results you never scroll to cost nothing. The button then reads "Stop scanning…"; the scan lasts until you stop it, leave the page, or reach the daily limit. If an identical item is sold elsewhere — the same model number with nothing else bundled (no accessory sets, no "W/ blower", no 2-packs, no batteries or parts that merely mention the model), new, in stock, by a US store other than Amazon or eBay, at a price UPCitemdb has seen in the last 60 days — the cheapest appears in a blue box beside the Amazon price: "Found at MERCHANT for PRICE", linked to that store's listing (through UPCitemdb's redirect), with "View Google Shopping results" underneath. Listings with nothing identical are left exactly as they are. Nothing is looked up unless you start a scan. UPCitemdb's free plan allows 100 requests a day per internet connection, but only 20 of them can be searches, and each listing takes one search, so the button counts against 20 (about 20 listings a day), with no sign-up; the count comes from UPCitemdb's own replies. Results are kept for 72 hours, so repeat searches don't spend requests on listings already checked. UPCitemdb's store prices can lag behind the stores' own — hover the box to see when the price was seen. Settings are in `priceCheck` in `src/config.js`.
 
-**Books, films, TV, music and games are left alone.** The trust signals are for physical goods, so books (print, Kindle, audiobooks), films and TV (DVD, Blu-ray, Prime Video), music (CDs, vinyl) and video games get no rating. Their product pages get no panel; a search where nearly all the results (80%+) are media gets no Disenshittify at all (no toggle, nothing re-ordered or removed); on mixed searches the media results get no badge or colour and keep the places Amazon gave them, with the rated listings sorted around them — so a search for a game keeps the game on top. Game controllers, consoles, headsets, chargers and other accessories are still rated.
+**Books, films, TV, music and games are left alone.** The trust signals are for physical goods, so books (print, Kindle, audiobooks), films and TV (DVD, Blu-ray, Prime Video), music (CDs, vinyl) and video games get no rating. Their product pages get no panel; a search where nearly all the results (80%+) are media gets no AmazonPlus at all (no toggle, nothing re-ordered or removed); on mixed searches the media results get no badge or colour and keep the places Amazon gave them, with the rated listings sorted around them — so a search for a game keeps the game on top. Game controllers, consoles, headsets, chargers and other accessories are still rated.
 
-The Disenshittify box stays in view: once you scroll past it, it floats at the top of the window over the filter column, and settles back into place when you scroll up.
+**Tile view.** Search results always show as a grid of cards (as Amazon does for clothing or home decor), even on searches where Amazon would list them row by row — more listings fit on screen, which makes the colours easy to compare. The number of columns follows the window width (two on a phone). Settings: `tiles` in `src/config.js`.
 
-Turning it off puts the page back the way Amazon served it. The toggle state is remembered, so it stays on as you move between searches and pages.
+The AmazonPlus box stays in view: once you scroll past it, it floats at the top of the window over the filter column (below Amazon's sticky search bar when that's showing), and settles back into place when you scroll up.
+
+Turning it off puts the page back the way Amazon served it, layout included. The toggle state is remembered, so it stays on as you move between searches and pages.
+
+**Dark mode.** When Amazon shows a dark page, AmazonPlus switches to dark tints with light text, so Amazon's own light text stays readable on the coloured cards; every text the script draws is at least 4.5:1 against its background in both modes.
 
 ## Permissions and privacy
 
@@ -60,7 +66,7 @@ Turning it off puts the page back the way Amazon served it. The toggle state is 
 | **Safari** | Userscripts (free) or Tampermonkey for Safari | iPhone/iPad: the Userscripts app (free) |
 
 - Uses `GM_*` functions where available (Tampermonkey, Violentmonkey) and Greasemonkey 4's `GM.*` functions otherwise. Runs in the manager's isolated script context (`@inject-into content` for Violentmonkey).
-- On Amazon's mobile site there is no filter column, so the Disenshittify box sits above the results, and there is no Sort by menu, so the Disenshittified sorts aren't offered (the default trust order still applies). Product-page ratings read the mobile layout too.
+- On Amazon's mobile site there is no filter column, so the AmazonPlus box sits above the results, and there is no Sort by menu, so the AmazonPlus sorts aren't offered (the default trust order still applies). Product-page ratings read the mobile layout too.
 - The Amazon app is not a browser and can't run userscripts.
 
 ## Install
@@ -71,7 +77,7 @@ Turning it off puts the page back the way Amazon served it. The toggle state is 
 
 1. Open `about:debugging#/runtime/this-firefox` in Firefox.
 2. Click **Load Temporary Add-on…** and pick `manifest.json` in this folder (or the `.xpi`).
-3. Open an Amazon search. If the toggle doesn't appear, open `about:addons` → Disenshittify Amazon → **Permissions** and allow access to amazon.com (Firefox lets you switch site access off for Manifest V3 extensions).
+3. Open an Amazon search. If the toggle doesn't appear, open `about:addons` → AmazonPlus → **Permissions** and allow access to amazon.com (Firefox lets you switch site access off for Manifest V3 extensions).
 
 Temporary add-ons are removed when Firefox restarts. For a permanent install, sign it through addons.mozilla.org (it can be an unlisted, self-distributed add-on).
 

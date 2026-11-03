@@ -27,7 +27,7 @@ const userscript = fs.readFileSync(path.join(root, "dist/disenshittify-amazon.us
   await p.evaluate(GM_SHIM);
   await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
   await p.waitForSelector(".dsa-badge");
-  const after = await measure("With Disenshittify on");
+  const after = await measure("With AmazonPlus on");
   // Simulate a busy page: 300 bursts of DOM churn (ads, carousels), plus 40 sort switches / toggles.
   for (let i = 0; i < 300; i++) await p.evaluate(() => { const d = document.createElement("div"); d.textContent = "x"; document.body.appendChild(d); d.remove(); });
   await p.waitForTimeout(500);

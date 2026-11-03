@@ -1,4 +1,4 @@
-// Disenshittify Amazon — trust scorer.
+// AmazonPlus — trust scorer.
 // Pure functions: no DOM access, so the same code runs in the extension and in Node tests.
 //
 // scorePage(listings, config, bigrams) takes the listings on one results page and returns

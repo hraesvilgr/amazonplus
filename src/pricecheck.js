@@ -1,4 +1,4 @@
-// Disenshittify Amazon — "Found at MERCHANT for PRICE" (off-Amazon price scan, via UPCitemdb).
+// AmazonPlus — "Found at MERCHANT for PRICE" (off-Amazon price scan, via UPCitemdb).
 // For a listing with a manufacturer model number, search UPCitemdb's product database for that brand +
 // model and look for a 100%-identical item: the same model number with nothing else bundled, sold new
 // and in stock by a US store other than Amazon or eBay, with a recently checked price. Pure functions;

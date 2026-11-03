@@ -1,4 +1,4 @@
-// Disenshittify Amazon — brand memory.
+// AmazonPlus — brand memory.
 // Remembers how each brand's listings have looked across your searches, and turns that into
 // learned "trust" / "block" decisions. Pure functions over a plain object, so it runs in Node tests.
 //
