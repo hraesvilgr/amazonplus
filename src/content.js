@@ -640,7 +640,8 @@
     // The free plan allows 100 requests a day, but only 20 of them can be searches, and every scan
     // request is a search, so count against 20.
     const cap = PC.searchLimit || 20;
-    btn.textContent = (scanOn ? "Stop scanning for off-Amazon prices" : "Scan for off-Amazon prices") + `: ${Math.min(u.used, cap)}/${cap} used so far today`;
+    const label = btn.querySelector(".dsa-scan-label") || btn;
+    label.textContent = (scanOn ? "Stop scanning for off-Amazon prices" : "Scan for off-Amazon prices") + `: ${Math.min(u.used, cap)}/${cap} used so far today`;
     btn.setAttribute("aria-pressed", scanOn ? "true" : "false");
     if (note) note.textContent = scanNote;
   }
@@ -1319,6 +1320,23 @@
       })));
   }
 
+  // A small bubbling flask on the price-scan button: the feature is experimental. Drawn in the text
+  // colour (works in dark mode); built node by node, no innerHTML.
+  function flaskIcon() {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+    const icon = svg("svg", { class: "dsa-flask", viewBox: "0 -6 16 24", width: "14", height: "21", "aria-hidden": "true", focusable: "false" });
+    icon.append(
+      svg("path", { class: "dsa-flask-liquid", d: "M4.6 11 H11.4 L13.1 14.7 A1.1 1.1 0 0 1 12.1 16.3 H3.9 A1.1 1.1 0 0 1 2.9 14.7 Z" }),
+      svg("path", { class: "dsa-flask-glass", d: "M5.5 1 H10.5 M6.8 1 V6.2 L2.4 14.6 A1.6 1.6 0 0 0 3.8 17 H12.2 A1.6 1.6 0 0 0 13.6 14.6 L9.2 6.2 V1" }),
+      svg("circle", { class: "dsa-bub dsa-bub1", cx: "6.6", cy: "14.2", r: "0.9" }),
+      svg("circle", { class: "dsa-bub dsa-bub2", cx: "9.4", cy: "13.4", r: "0.7" }),
+      svg("circle", { class: "dsa-bub dsa-bub3", cx: "8", cy: "4", r: "0.7" }));
+    const wrap = el("span", { class: "dsa-flask-wrap", title: "Experimental" });
+    wrap.append(icon);
+    return wrap;
+  }
+
   function buildToggle() {
     const input = el("input", { type: "checkbox", role: "switch", class: "dsa-main" });
     input.checked = enabled;
@@ -1337,7 +1355,8 @@
       el("div", { class: "dsa-status" }, "Off"),
       el("div", { class: "dsa-legend", "aria-hidden": "true" }, el("span")),
       el("div", { class: "dsa-scanbox", hidden: "" },
-        el("button", { type: "button", class: "dsa-scan", on: { click: e => { e.preventDefault(); scanPrices(); } } }, "Scan for off-Amazon prices"),
+        el("button", { type: "button", class: "dsa-scan", on: { click: e => { e.preventDefault(); scanPrices(); } } },
+          flaskIcon(), el("span", { class: "dsa-scan-label" }, "Scan for off-Amazon prices")),
         el("div", { class: "dsa-scan-note" })),
       el("button", {
         type: "button", class: "dsa-manage",

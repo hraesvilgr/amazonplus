@@ -363,6 +363,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   };
   await scanPage(true);
   const scanBtn = async () => p.textContent("#dsa-toggle .dsa-scan");
+  check("Price scan button carries a little flask marking it experimental (not part of its text)", await p.evaluate(() => {
+    const w = document.querySelector("#dsa-toggle .dsa-scan .dsa-flask-wrap"); return !!w && w.title === "Experimental" && !!w.querySelector("svg circle.dsa-bub") && w.getBoundingClientRect().width > 8; }));
   check("Price scan: a button in the AmazonPlus box, nothing looked up until it's pressed",
     (await scanBtn()) === "Scan for off-Amazon prices: 0/20 used so far today" && (await p.evaluate(() => window.__gmReqs.length)) === 0, await scanBtn());
   const scanIdle = () => p.waitForFunction(() => !/^Checking/.test(document.querySelector("#dsa-toggle .dsa-scan-note").textContent), null, { timeout: 30000 });

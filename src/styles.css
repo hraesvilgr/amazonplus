@@ -314,6 +314,18 @@
   background: #e6f6ff; color: #0f1111; font: 12px/1.3 "Amazon Ember", Arial, sans-serif; text-align: left; cursor: pointer;
 }
 .dsa-scan:hover:not(:disabled) { background: #ccecff; }
+/* The price scan is experimental: a little bubbling flask on its button. */
+.dsa-scan { display: flex; align-items: center; gap: 7px; }
+.dsa-flask-wrap { flex: none; display: inline-flex; }
+.dsa-flask { display: block; overflow: visible; }
+.dsa-flask-glass { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.dsa-flask-liquid { fill: #29a3e0; }
+.dsa-bub { fill: #ffffff; transform-box: fill-box; animation: dsa-bubble 2.4s ease-in infinite; }
+.dsa-bub3 { fill: currentColor; animation-name: dsa-bubble-out; animation-delay: 1.2s; }
+.dsa-bub2 { animation-delay: 0.8s; }
+@keyframes dsa-bubble { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-4px); opacity: 0; } }
+@keyframes dsa-bubble-out { 0% { transform: translateY(2px); opacity: 0; } 25% { opacity: 0.8; } 100% { transform: translateY(-7px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .dsa-bub { animation: none; } .dsa-bub3 { opacity: 0.7; } }
 .dsa-scan:disabled { cursor: progress; opacity: 0.8; }
 .dsa-scan-note { margin-top: 4px; font-size: 11px; color: #565959; }
 .dsa-scan-note:empty { display: none; }
