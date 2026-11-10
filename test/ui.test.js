@@ -393,12 +393,15 @@ const products = require("./fixtures/products-2026-10-28.json");
     found.main === "https://www.upcitemdb.com/norob/alink/?id=mctools" && found.bg === "rgb(0, 170, 255)", JSON.stringify(found));
   check("…with a small link to the Google Shopping search", found.gText === "View Google Shopping results" && found.g === "https://www.google.com/search?udm=28&q=DEWALT%20DCF787D1");
   check("No identical item (only a 2-pack): card left alone", !found.bdci && found.boxes === 1);
-  check("Only listings over $30 with a model number are looked up", found.reqs.length === 2 && !found.reqs.some(u => /CMHT68109/.test(u)) && found.reqs.some(u => /BDCI20C/.test(u)), found.reqs.join(" | "));
-  check("…the rest as they scroll into view, counted from UPCitemdb's own headers", found.btn === "Stop scanning for off-Amazon prices: 2/20 used so far today" && /found 1 elsewhere, 1 not found/.test(found.note), found.btn + " / " + found.note);
+  // Any price: the $9.99 and $14.99 AMAGABELI pans have model numbers too; the bit holder is a
+  // hidden repeat placement, never in view, so never looked up
+  check("Listings at any price with a model number are looked up (not hidden repeats)", found.reqs.length === 4 && ["DCF787D1", "BDCI20C", "BG282", "BG285"].every(m => found.reqs.some(u => u.includes(m))) &&
+    !found.reqs.some(u => /CMHT68109/.test(u)), found.reqs.join(" | "));
+  check("…the rest as they scroll into view, counted from UPCitemdb's own headers", found.btn === "Stop scanning for off-Amazon prices: 4/20 used so far today" && /found 1 elsewhere, 3 not found/.test(found.note), found.btn + " / " + found.note);
   // Results are kept: a reload shows the box without asking again, and the count carries over
   await scanPage(false);
   check("Results are kept: shown again after a reload with no new requests", (await p.evaluate(() => window.__gmReqs.length)) === 0 && !!(await p.$(".dsa-found")) &&
-    (await scanBtn()) === "Scan for off-Amazon prices: 2/20 used so far today");
+    (await scanBtn()) === "Scan for off-Amazon prices: 4/20 used so far today");
   await p.click("#dsa-toggle .dsa-scan");
   await scrollAll(); await p.waitForTimeout(600);
   check("…and scanning again doesn't spend requests on them", (await p.evaluate(() => window.__gmReqs.length)) === 0);
@@ -422,6 +425,19 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(300);
   const settled = await boxAt();
   check("…and settles back into the column at the top", !settled.float && settled.top === home.top && settled.left === home.left, JSON.stringify([home, settled]));
+  // A margin under the box (as on phones): floating must not move the content below even a pixel,
+  // or scroll anchoring makes the box flicker between floating and docked
+  const noShift = await p.evaluate(async () => {
+    const t = document.getElementById("dsa-toggle"); window.scrollTo(0, 0); await new Promise(r => setTimeout(r, 200));
+    t.style.marginBottom = "18px";
+    const next = t.nextElementSibling, docTop = () => next.getBoundingClientRect().top + scrollY;
+    const before = docTop();
+    window.scrollTo(0, t.getBoundingClientRect().bottom + scrollY + 5); await new Promise(r => setTimeout(r, 300));
+    const res = { float: t.classList.contains("dsa-float"), before: Math.round(before), after: Math.round(docTop()) };
+    t.style.marginBottom = ""; window.scrollTo(0, 0); await new Promise(r => setTimeout(r, 300));
+    return res;
+  });
+  check("Floating keeps the content below exactly where it was (no flicker on phones)", noShift.float && noShift.before === noShift.after, JSON.stringify(noShift));
   check("Floating box has no scrollbar of its own when it fits", await p.evaluate(async () => { window.scrollTo(0, 3000); await new Promise(r => setTimeout(r, 300));
     const t = document.getElementById("dsa-toggle"); return t.classList.contains("dsa-float") && getComputedStyle(t).overflowY === "visible"; }));
   // Amazon's sticky search bar (shown when you scroll back up): the box sits below it, not over it
@@ -556,7 +572,78 @@ const products = require("./fixtures/products-2026-10-28.json");
     const st2 = await p.textContent("#dsa-toggle .dsa-status");
     check(`…and the promo count is page 2's own, not added to page 1's`, /· 1 promo removed/.test(st2), st2);
   }
+  // Phone layout (no filter column; the box sits above the results): scrolling down shrinks the
+  // floating box to the logo, as wide as the on/off switch; a tap opens it, in colour when on, grey when off
+  await p.setViewportSize({ width: 390, height: 800 });
+  await p.goto("https://www.amazon.com/s?k=baguette+tray");
+  // Amazon's phone site: no filter column, and the results stack under the box
+  await p.evaluate(() => { document.getElementById("s-refinements").remove(); document.querySelector(".wrap").style.display = "block"; });
+  await p.evaluate(GM_SHIM);
+  await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
+  await p.waitForSelector("#dsa-toggle");
+  await p.waitForTimeout(600);
+  const phone = async () => p.evaluate(() => {
+    const t = document.getElementById("dsa-toggle"), img = t.querySelector(".dsa-logo img"), r = t.getBoundingClientRect();
+    return { inline: t.classList.contains("dsa-inline"), float: t.classList.contains("dsa-float"), mini: t.classList.contains("dsa-mini"),
+      w: Math.round(r.width), h: Math.round(r.height), logoW: img ? Math.round(img.getBoundingClientRect().width) : null,
+      loaded: !!img && img.complete && img.naturalWidth > 0, track: Math.round(t.querySelector(".dsa-track").getBoundingClientRect().width),
+      grey: img ? /grayscale/.test(getComputedStyle(img).filter) : null, switchShown: !!t.querySelector(".dsa-switch").getClientRects().length };
+  });
+  const docked = await phone();
+  await p.evaluate(() => window.scrollTo(0, 900)); await p.waitForTimeout(400);
+  const shrunk = await phone();
+  check("Phone: scrolled down, the box shrinks to the logo, as wide as the on/off switch, in colour",
+    docked.inline && !docked.mini && shrunk.float && shrunk.mini && shrunk.loaded && shrunk.logoW === docked.track && !shrunk.switchShown && shrunk.w < 60 && !shrunk.grey,
+    JSON.stringify({ docked, shrunk }));
+  await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(300);
+  const opened = await phone();
+  check("…a tap on the logo opens the full box", opened.float && !opened.mini && opened.switchShown && opened.w > 300, JSON.stringify(opened));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);           // off
+  await p.mouse.click(200, 700); await p.waitForTimeout(300);                      // tap elsewhere
+  const offMini = await phone();
+  check("…a tap elsewhere shrinks it again, and with AmazonPlus off the logo is grey", offMini.mini && offMini.grey, JSON.stringify(offMini));
+  await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(200);
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);           // back on
+  await p.evaluate(() => window.scrollBy(0, 400)); await p.waitForTimeout(400);
+  const reshrunk = await phone();
+  check("…scrolling on shrinks it too, back in colour once AmazonPlus is on", reshrunk.mini && !reshrunk.grey, JSON.stringify(reshrunk));
+  await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(400);
+  const atTop = await phone();
+  check("…and at the top of the page it's the full box in its place again", !atTop.float && !atTop.mini && atTop.switchShown, JSON.stringify(atTop));
+  await p.setViewportSize({ width: 1400, height: 1000 });
   await load("baguette tray");
+  // Phone site: sorting is a row of chips in the Filters sheet (no sort menu). Stand-in modelled on
+  // a phone screenshot: links styled as chips, the selected one with an extra class, a ✕ to close.
+  const openSheet = () => p.evaluate(() => {
+    const sheet = document.createElement("div"); sheet.id = "fake-sheet";
+    sheet.style.cssText = "position:fixed;left:0;right:0;bottom:0;height:60%;background:#222;color:#eee;z-index:400";
+    const chip = (label, on) => `<a href="#" class="chip${on ? " chip-on" : ""}" style="display:inline-block;margin:4px;padding:6px 12px;border:1px solid ${on ? "#4af" : "#888"};border-radius:20px"><span>${label}</span></a>`;
+    sheet.innerHTML = '<div class="hdr">Filters (1) <button aria-label="Close filters">✕</button></div><div class="body"><div class="t">Sort by</div><div class="chips">' +
+      chip("Featured", true) + ["Price: Low to High", "Price: High to Low", "Avg. Customer Review", "Newest Arrivals", "Best Sellers"].map(l => chip(l)).join("") + "</div></div>";
+    sheet.querySelector("button").addEventListener("click", () => sheet.remove());
+    sheet.querySelectorAll("a.chip").forEach(a => a.addEventListener("click", e => e.preventDefault()));
+    document.body.appendChild(sheet);
+  });
+  const chipState = () => p.evaluate(() => [...document.querySelectorAll("#fake-sheet .chips > *")].map(c => c.textContent.trim() + (c.classList.contains("chip-on") ? "*" : "")));
+  await openSheet(); await p.waitForTimeout(900);
+  let chipsNow = await chipState();
+  check("Phone Filters sheet: 'AmazonPlus: Trust' and '$/count' chips added to Sort by, Trust lit (it's the order on screen)",
+    JSON.stringify(chipsNow) === JSON.stringify(["Featured", "Price: Low to High", "Price: High to Low", "Avg. Customer Review", "Newest Arrivals", "Best Sellers", "AmazonPlus: Trust*", "AmazonPlus: $/count"]), JSON.stringify(chipsNow));
+  await p.click('#fake-sheet [data-dsa-sort="unit"]'); await p.waitForTimeout(400);
+  const afterUnit = await p.evaluate(() => ({ closed: !document.getElementById("fake-sheet"),
+    prices: [...document.querySelectorAll('.s-main-slot > [data-asin]:not(.dsa-dupe)')].filter(c => c.offsetParent).slice(0, 3).map(c => c.dataset.dsaUnit || "") }));
+  await openSheet(); await p.waitForTimeout(900);
+  chipsNow = await chipState();
+  check("…tapping '$/count' sorts by price per unit, closes the sheet, and lights that chip next time", afterUnit.closed && afterUnit.prices.map(x => parseFloat(x.slice(1))).every((v, i, a) => v > 0 && (i === 0 || v >= a[i - 1])) && chipsNow.includes("AmazonPlus: $/count*") && !chipsNow.includes("Featured*"), JSON.stringify([afterUnit, chipsNow]));
+  await p.click('#fake-sheet a.chip >> text="Featured"'); await p.waitForTimeout(500);
+  await p.click('#fake-sheet button'); await openSheet(); await p.waitForTimeout(900);
+  chipsNow = await chipState();
+  check("…tapping Amazon's 'Featured' goes back to Amazon's order, and its chip is lit again", chipsNow.includes("Featured*") && !chipsNow.some(c => /AmazonPlus.*\*/.test(c)), JSON.stringify(chipsNow));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  chipsNow = await chipState();
+  check("…and AmazonPlus off removes its chips", !chipsNow.some(c => /AmazonPlus/.test(c)) && chipsNow.includes("Featured*"), JSON.stringify(chipsNow));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  await p.click('#fake-sheet [data-dsa-sort="trust"]'); await p.waitForTimeout(300);
   // Turning AmazonPlus off also turns off product pages
   await p.click("#dsa-toggle .dsa-switch");
   await p.goto("https://www.amazon.com/dp/B0002D00H8");

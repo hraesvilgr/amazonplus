@@ -510,7 +510,7 @@
 
   // ---------- "Found at MERCHANT for PRICE" (off-Amazon price scan, UPCitemdb) ----------
   // Nothing is looked up automatically. "Scan for off-Amazon prices" in the AmazonPlus box looks up
-  // listings anywhere on Amazon that have a manufacturer model number and cost over $30, one at a time,
+  // listings anywhere on Amazon that have a manufacturer model number (any price), one at a time,
   // on UPCitemdb's free plan (100 requests a day per connection, no sign-up), as they scroll into view,
   // and shows the cheapest identical item sold new elsewhere. Results are kept for 72 hours.
   // Userscript only (GM_xmlhttpRequest).
@@ -650,7 +650,8 @@
     if (scanOn) { scanOn = false; scanQueue.length = 0; scanQueued.clear(); scanNote = scanSummary("Stopped."); updateScanButton(); return; }
     const eligible = cards().filter(c => c.dataset.dsaPriceQ && !c.classList.contains("dsa-dupe"));
     if (!eligible.length) {
-      scanNote = "No listings here have a manufacturer model number and a price over $" + (PC.minPrice || 0) + ".";
+      scanNote = PC.minPrice ? "No listings here have a manufacturer model number and a price over $" + PC.minPrice + "."
+        : "No listings here have a manufacturer model number.";
       updateScanButton();
       return;
     }
@@ -1055,6 +1056,146 @@
     }
   }
 
+
+  // ---------- phone site: the "Sort by" chips in Amazon's Filters sheet ----------
+  // The phone site has no sort menu; sorting lives as a row of chips ("Featured", "Price: Low to
+  // High", …) inside the Filters sheet. Our two sorts are added as chips of the same look, and the
+  // chip that's lit up follows the order actually on screen. Found by its labels, not Amazon's class
+  // names, so a restyle doesn't break it; if the row isn't recognised, nothing is added.
+  const MOBILE_SORT_LABELS = ["Price: Low to High", "Price: High to Low", "Avg. Customer Review", "Best Sellers", "Newest Arrivals"];
+  const isOn = el => /^(true|page|step|location|date)$/i.test(el.getAttribute("aria-checked") || el.getAttribute("aria-selected") ||
+    el.getAttribute("aria-pressed") || el.getAttribute("aria-current") || "");
+  let mobileSort = null;     // { row, chips: [Amazon's chips], plain, lit, litChip, litOriginal, ours: {trust, unit} }
+
+  function findMobileSortRow() {
+    if (sortSelect() && sortSelect().offsetParent) return null;          // desktop: the menu handles it
+    let hit = null;
+    try {
+      const x = document.evaluate("//*[normalize-space(text())='Price: Low to High']", document.body, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      for (let i = 0; i < x.snapshotLength && !hit; i++) {
+        const n = x.snapshotItem(i);
+        if (n.closest("select, option, .a-popover, .a-dropdown-common, #dsa-toggle") || !n.getClientRects().length) continue;
+        hit = n;
+      }
+    } catch (e) { return null; }
+    if (!hit) return null;
+    // The chip: the largest ancestor whose text is still just this label; the row: its parent.
+    let chip = hit;
+    while (chip.parentElement && chip.parentElement.textContent.trim() === "Price: Low to High") chip = chip.parentElement;
+    const row = chip.parentElement;
+    if (!row) return null;
+    const chips = [...row.children].filter(c => !c.dataset.dsaSort);
+    const labels = chips.map(c => c.textContent.trim());
+    if (labels.filter(l => MOBILE_SORT_LABELS.includes(l) || l === "Featured").length < 3) return null;
+    return { row, chips };
+  }
+
+  // Which chip looks selected, and what a plain one looks like.
+  function chipLooks(chips) {
+    let lit = chips.find(c => isOn(c) || c.querySelector("[aria-checked=true],[aria-selected=true],[aria-pressed=true],[aria-current]:not([aria-current=false])"));
+    if (!lit) {
+      const count = new Map();
+      chips.forEach(c => count.set(c.className, (count.get(c.className) || 0) + 1));
+      if (count.size === 2) lit = chips.find(c => count.get(c.className) === 1 && chips.length > 2);
+    }
+    const plainChip = chips.find(c => c !== lit && c.className !== (lit && lit.className)) || chips[chips.length - 1];
+    return { lit, plainChip };
+  }
+
+  // Copy the look (classes and aria state, recursively) of one chip onto another of the same shape.
+  function copyLook(from, to) {
+    to.className = from.className;
+    for (const a of ["aria-checked", "aria-selected", "aria-pressed", "aria-current"]) {
+      if (from.hasAttribute(a)) to.setAttribute(a, from.getAttribute(a)); else to.removeAttribute(a);
+    }
+    const f = [...from.children], t = [...to.children];
+    if (f.length === t.length) f.forEach((c, i) => copyLook(c, t[i]));
+  }
+
+  function makeChip(template, label, key) {
+    const chip = template.cloneNode(true);
+    // Strip everything that could make it act like Amazon's chip (links, ids, data, form fields).
+    for (const e of [chip, ...chip.querySelectorAll("*")]) {
+      for (const a of [...e.attributes]) if (!/^(class|style|aria-(checked|selected|pressed|current|hidden)|role)$/.test(a.name)) e.removeAttribute(a.name);
+    }
+    chip.querySelectorAll("input, img, svg").forEach(n => n.remove());
+    let leaf = chip;
+    while (leaf.children.length) leaf = [...leaf.children].find(c => c.textContent.trim()) || leaf.children[0];
+    leaf.textContent = label;
+    chip.dataset.dsaSort = key;
+    chip.setAttribute("role", "button");
+    chip.setAttribute("tabindex", "0");
+    chip.style.cursor = "pointer";
+    const go = e => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setSortChoice(key);
+      setFeaturedFor("");
+      showMobileSort();
+      apply();
+      closeSheet(chip);
+    };
+    chip.addEventListener("click", go, true);
+    chip.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") go(e); }, true);
+    return chip;
+  }
+
+  // The sheet's close (✕) button: the nearest one up from the chips.
+  function closeSheet(from) {
+    for (let e = from.parentElement; e && e !== document.body; e = e.parentElement) {
+      const btn = [...e.querySelectorAll('button, [role=button], a')].find(b =>
+        /^(close|dismiss)/i.test(b.getAttribute("aria-label") || b.getAttribute("title") || "") || /^[✕×✖xX]$/.test(b.textContent.trim()));
+      if (btn) { btn.click(); return; }
+    }
+  }
+
+  // Light up the chip for the order on screen: ours, or Amazon's own as Amazon left it.
+  function showMobileSort() {
+    const m = mobileSort;
+    if (!m || !m.row.isConnected) return;
+    const mode = currentMode();
+    for (const key of Object.keys(m.ours)) copyLook(mode === key && m.lit ? m.lit : m.plainChip, m.ours[key]);
+    if (m.litChip) {
+      if (mode === "amazon") { if (m.litChip.className !== m.litOriginal.className) copyLook(m.litOriginal, m.litChip); }
+      else copyLook(m.plainChip, m.litChip);
+    }
+  }
+
+  function installMobileSort() {
+    if (mobileSort && mobileSort.row.isConnected) return;
+    mobileSort = null;
+    const found = findMobileSortRow();
+    if (!found) return;
+    const { lit, plainChip } = chipLooks(found.chips);
+    const ours = {};
+    for (const key of ["trust", "unit"]) {
+      ours[key] = makeChip(plainChip, SORTS[key].label, key);
+      found.row.appendChild(ours[key]);
+    }
+    mobileSort = { row: found.row, chips: found.chips, lit: lit && lit.cloneNode(true), plainChip: plainChip.cloneNode(true),
+      litChip: lit, litOriginal: lit && lit.cloneNode(true), ours };
+    showMobileSort();
+  }
+
+  function removeMobileSort() {
+    if (!mobileSort) return;
+    Object.values(mobileSort.ours).forEach(c => c.remove());
+    if (mobileSort.litChip && mobileSort.litChip.isConnected) copyLook(mobileSort.litOriginal, mobileSort.litChip);
+    mobileSort = null;
+  }
+
+  // Tapping one of Amazon's chips: Amazon's sort from now on ("Featured" = Amazon's real Featured order).
+  document.addEventListener("click", e => {
+    if (!enabled || !mobileSort || !e.target.closest) return;
+    const chip = mobileSort.chips.find(c => c.contains(e.target));
+    if (!chip) return;
+    setSortChoice(null);
+    const featured = chip.textContent.trim() === "Featured";
+    setFeaturedFor(featured ? currentQuery().toLowerCase() : "");
+    // Already on Featured: Amazon won't reload, so show its order here.
+    if (featured && isFeatured(urlSort())) setTimeout(() => { showMobileSort(); apply(); }, 0);
+  }, true);
+
   document.addEventListener("click", onSortEntry, true);
   document.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") onSortEntry(e); }, true);
   // Keyboard / native-select changes: keep Amazon from navigating to our entries.
@@ -1183,8 +1324,9 @@
     input.checked = enabled;
     input.addEventListener("change", () => {
       enabled = input.checked;
+      wrap.classList.toggle("dsa-off", !enabled);
       storeSet(KEY_ENABLED, enabled);
-      if (enabled) { installSortOption(); apply(); } else { removeSortOption(); restore(); }
+      if (enabled) { installSortOption(); installMobileSort(); apply(); } else { removeSortOption(); removeMobileSort(); restore(); }
       updateScanButton();
     });
     const wrap = el("div", { id: "dsa-toggle" },
@@ -1201,7 +1343,13 @@
         type: "button", class: "dsa-manage",
         on: { click: e => { e.preventDefault(); panelOpen = !panelOpen; renderPanel(); } }
       }, ""),
-      el("div", { class: "dsa-panel", hidden: "" }));
+      el("div", { class: "dsa-panel", hidden: "" }),
+      // Phones: while the box floats it shrinks to this logo; a tap opens it again.
+      el("button", { type: "button", class: "dsa-logo", "aria-label": "Open AmazonPlus" },
+        el("img", { src: globalThis.DSA_LOGO || "", alt: "AmazonPlus",
+          // If the page won't show embedded images, a text "a+" mark stands in.
+          on: { error: e => e.target.replaceWith(el("span", { class: "dsa-logo-text" }, "a", el("b", {}, "+"))) } })));
+    wrap.classList.toggle("dsa-off", !enabled);      // the logo shows in grey while AmazonPlus is off
     return wrap;
   }
 
@@ -1247,8 +1395,29 @@
       }
       return bottom;
     };
+    // On phones (no left column, the box sits above the results) the floating box would cover a
+    // third of the screen, so it shrinks to the logo; tapping the logo opens the full box, and
+    // tapping elsewhere or scrolling on shrinks it again.
+    let expanded = false, expandedAt = 0;
+    const mini = () => {
+      const want = toggle.classList.contains("dsa-float") && toggle.classList.contains("dsa-inline") && !expanded;
+      // The logo is as wide as the on/off switch (measured while the switch is still showing).
+      const track = toggle.querySelector(".dsa-track");
+      if (want && !toggle.classList.contains("dsa-mini") && track && track.offsetWidth) toggle.style.setProperty("--dsa-logo-w", track.offsetWidth + "px");
+      toggle.classList.toggle("dsa-mini", want);
+    };
+    toggle.querySelector(".dsa-logo").addEventListener("click", e => {
+      e.preventDefault();
+      expanded = true; expandedAt = window.scrollY;
+      mini(); place();
+    });
+    document.addEventListener("click", e => {
+      if (!expanded || toggle.contains(e.target)) return;
+      expanded = false; mini(); place();
+    }, true);
     const place = () => {
       if (!toggle.classList.contains("dsa-float")) return;
+      if (expanded && Math.abs(window.scrollY - expandedAt) > 150) { expanded = false; mini(); }
       const r = spot.getBoundingClientRect();
       toggle.style.left = r.left + "px";
       toggle.style.width = r.width + "px";
@@ -1262,11 +1431,24 @@
       const off = !e.isIntersecting && e.boundingClientRect.top < 0;
       if (off === toggle.classList.contains("dsa-float")) return;
       if (off) {
-        spot.style.height = toggle.offsetHeight + "px";
+        expanded = false;
+        // Hold the box's place exactly, margins included: if the content below moves even a few
+        // pixels, the browser shifts the scroll position to compensate (scroll anchoring), the
+        // place comes back into view, the box docks, and it flickers on and off (seen on phones,
+        // where the box sits in the results column).
+        const below = toggle.nextElementSibling || toggle.parentElement;
+        // Page coordinates, not window ones: the browser may adjust the scroll position mid-measurement.
+        const edge = () => (below === toggle.parentElement ? below.getBoundingClientRect().bottom : below.getBoundingClientRect().top) + window.scrollY;
+        const before = edge(), height = toggle.offsetHeight;
+        spot.style.height = height + "px";
         toggle.classList.add("dsa-float");
+        const shift = before - edge();
+        if (Math.abs(shift) > 0.5) spot.style.height = (height + shift) + "px";
+        mini();
         place();
       } else {
-        toggle.classList.remove("dsa-float", "dsa-float-tall");
+        expanded = false;
+        toggle.classList.remove("dsa-float", "dsa-float-tall", "dsa-mini");
         toggle.style.left = toggle.style.width = toggle.style.top = toggle.style.maxHeight = "";
         spot.style.height = "";
       }
@@ -1300,8 +1482,8 @@
       if (isMediaSearch()) { leaveMediaSearch(); return; }
       placeToggle();
       const input = document.querySelector("#dsa-toggle .dsa-main");
-      if (input) input.checked = enabled;
-      if (enabled) installSortOption();
+      if (input) { input.checked = enabled; input.closest("#dsa-toggle").classList.toggle("dsa-off", !enabled); }
+      if (enabled) { installSortOption(); installMobileSort(); }
       if (enabled && cards().some(c => !c.dataset.dsaScored && !isMedia(c))) apply();
       else if (enabled && CFG.hideClutter !== false && removeClutter() !== lastPromoCount) {
         lastPromoCount = promosRemoved;
@@ -1316,6 +1498,7 @@
     if (!t && !lastResults) return;
     if (lastResults) restore();
     removeSortOption();
+    removeMobileSort();
     if (t) t.remove();
     lastResults = null;
   }

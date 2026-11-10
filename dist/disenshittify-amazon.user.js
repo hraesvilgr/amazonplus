@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AmazonPlus
 // @namespace    disenshittify-amazon
-// @version      0.10.3
+// @version      0.10.6
 // @description  Rates Amazon search results by trustworthiness, tints them green to red, and sorts the junk to the bottom.
 // @match        https://www.amazon.com/s*
 // @match        https://amazon.com/s*
@@ -26,7 +26,7 @@
 (function () {
   const style = document.createElement("style");
   style.id = "dsa-styles";
-  style.textContent = "/* AmazonPlus \u2014 injected styles. Everything is prefixed dsa- to stay out of Amazon's way. */\n\n/* ---------- toggle ---------- */\n#dsa-toggle {\n  box-sizing: border-box;\n  margin: 0 0 14px;\n  padding: 10px 12px;\n  border: 2px solid #8bc34a;\n  border-radius: 10px;\n  background: #fbfdf7;\n  font-family: \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n#dsa-toggle.dsa-inline { max-width: 360px; margin: 8px 0 12px; }\n/* Floating at the top of the window once its place in the column has scrolled away */\n#dsa-toggle.dsa-float {\n  position: fixed;\n  top: 8px;\n  z-index: 300;\n  margin: 0;\n  max-height: calc(100vh - 16px);\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);\n}\n#dsa-toggle.dsa-float.dsa-float-tall { overflow-y: auto; }\n\n.dsa-switch {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  cursor: pointer;\n  user-select: none;\n}\n.dsa-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }\n.dsa-track {\n  position: relative;\n  flex: none;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  background: #b9bdbd;\n  transition: background 0.15s;\n}\n.dsa-thumb {\n  position: absolute;\n  top: 3px;\n  left: 3px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  background: #fff;\n  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);\n  transition: transform 0.15s;\n}\n.dsa-switch input:checked + .dsa-track { background: #2e7d32; }\n.dsa-switch input:checked + .dsa-track .dsa-thumb { transform: translateX(18px); }\n.dsa-switch input:focus-visible + .dsa-track { outline: 2px solid #007185; outline-offset: 2px; }\n.dsa-label { font-size: 16px; font-weight: 700; }\n.dsa-unit { margin-bottom: 6px; }\n\n.dsa-status { margin: 6px 0 0 50px; font-size: 12px; color: #565959; }\n.dsa-legend { margin: 8px 0 0 50px; }\n.dsa-legend span {\n  display: block;\n  height: 6px;\n  border-radius: 3px;\n  background: linear-gradient(90deg, hsl(120 70% 40%), hsl(60 70% 45%), hsl(0 70% 45%));\n}\n\n/* ---------- rated cards ---------- */\n.dsa-paint {\n  background: var(--dsa-bg) !important;\n  box-shadow: inset 6px 0 0 var(--dsa-edge) !important;\n  border-radius: 8px;\n}\n/* Amazon paints white boxes inside the card; let the tint show through. */\n.dsa-paint .a-section,\n.dsa-paint .s-card-border,\n.dsa-paint .puis-card-border,\n.dsa-paint .s-card-container,\n.dsa-paint .puis-padding-left-small {\n  background: transparent !important;\n}\n/* Keep product photos true to colour: a plain white box behind the image, no blending. */\n.dsa-paint .s-product-image-container {\n  background: #fff !important;\n  border-radius: 6px;\n}\n.dsa-paint .s-image { mix-blend-mode: normal !important; }\n\n.dsa-dupe { display: none !important; }\n\n/* ---------- trust badge: a small pill over the card's top-right corner ---------- */\n.dsa-rated { position: relative; }\n.dsa-rated:has(.dsa-badge[open]) { z-index: 60; }\n.dsa-wide [data-cy=\"title-recipe\"] { padding-right: 130px; }       /* open popover sits above neighbouring cards */\n.dsa-badge {\n  position: absolute;\n  top: 6px;\n  right: 6px;\n  z-index: 30;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  color: var(--dsa-ink);\n  text-align: left;\n}\n.dsa-badge > summary {\n  display: inline-block;\n  padding: 2px 8px;\n  border-radius: 11px;\n  background: var(--dsa-pill, var(--dsa-edge));\n  color: #fff;\n  font-weight: 700;\n  white-space: nowrap;\n  cursor: pointer;\n  list-style: none;\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);\n}\n.dsa-badge > summary::-webkit-details-marker { display: none; }\n.dsa-badge > summary::marker { content: \"\"; }\n.dsa-badge > summary::after { content: \" \\25BE\"; font-weight: 400; }\n.dsa-badge[open] > summary::after { content: \" \\25B4\"; }\n.dsa-badge .dsa-score { font-weight: 400; opacity: 0.85; }\n.dsa-badge li { margin: 1px 0; white-space: pre-wrap; padding-left: 2.2em; text-indent: -2.2em; }\n.dsa-badge li.dsa-good { color: #1e6b25; }\n.dsa-badge li.dsa-bad { color: #9b1c1c; }\n\n/* ---------- brand buttons (badge + manager) ---------- */\n.dsa-badge-body {\n  position: absolute;\n  top: calc(100% + 4px);\n  right: 0;\n  width: 280px;\n  max-width: 80vw;\n  max-height: 60vh;\n  overflow-y: auto;\n  padding: 10px 12px;\n  border: 1px solid var(--dsa-edge);\n  border-radius: 8px;\n  background: #fff;\n  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);\n}\n\n.dsa-badge .dsa-badge-body ul { margin: 0; padding: 0; list-style: none; background: none; }\n.dsa-brandrow {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  margin-top: 8px;\n  padding-top: 8px;\n  border-top: 1px solid rgba(0, 0, 0, 0.12);\n}\n.dsa-brandname { font-weight: 700; color: #0f1111; margin-right: auto; }\n.dsa-muted { color: #565959; font-size: 12px; }\n.dsa-btn {\n  font: 12px/1 \"Amazon Ember\", Arial, sans-serif;\n  padding: 5px 9px;\n  border: 1px solid #b9bdbd;\n  border-radius: 12px;\n  background: #fff;\n  color: #0f1111;\n  cursor: pointer;\n}\n.dsa-btn:hover { background: #f3f3f3; }\n.dsa-btn.dsa-trust { border-color: #2e7d32; color: #1e6b25; }\n.dsa-btn.dsa-block { border-color: #b71c1c; color: #9b1c1c; }\n.dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }\n.dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }\n.dsa-btn.dsa-x { padding: 3px 8px; font-size: 14px; }\n.dsa-btn.dsa-reset { margin-left: auto; }\n\n.dsa-manage {\n  display: block;\n  margin: 8px 0 0 50px;\n  padding: 0;\n  border: 0;\n  background: none;\n  color: #007185;\n  font: 12px \"Amazon Ember\", Arial, sans-serif;\n  cursor: pointer;\n  text-align: left;\n}\n.dsa-manage:hover { text-decoration: underline; }\n.dsa-panel {\n  margin-top: 8px;\n  max-height: 360px;\n  overflow-y: auto;\n  font: 12px/1.4 \"Amazon Ember\", Arial, sans-serif;\n}\n.dsa-panel[hidden] { display: none; }\n.dsa-phead { margin: 8px 0 4px; font-weight: 700; font-size: 12px; }\n.dsa-plist { margin: 0; padding: 0; list-style: none; }\n.dsa-pitem {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px 6px;\n  padding: 4px 0;\n  border-bottom: 1px solid #eee;\n}\n.dsa-pname { font-weight: 700; margin-right: auto; word-break: break-word; }\n.dsa-ptag { font-size: 11px; padding: 1px 6px; border-radius: 8px; color: #fff; }\n.dsa-ptag.dsa-trust { background: #2e7d32; }\n.dsa-ptag.dsa-block { background: #b71c1c; }\n.dsa-pactions { display: flex; gap: 4px; width: 100%; justify-content: flex-end; }\n.dsa-pitem .dsa-btn { padding: 3px 7px; font-size: 11px; }\n.dsa-pfoot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }\n\n/* ---------- promos / ad blocks between results ---------- */\n.dsa-clutter,\n.dsa-stray-head { display: none !important; }\n\n/* ---------- product page panel ---------- */\n.dsa-checked { font-weight: 700; }\n.dsa-product {\n  margin: 8px 0 10px;\n  padding: 8px 12px 8px 14px;\n  border-radius: 8px;\n  background: var(--dsa-bg);\n  box-shadow: inset 6px 0 0 var(--dsa-edge);\n  font: 13px/1.4 \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n.dsa-ph-head { display: flex; align-items: center; gap: 8px; }\n.dsa-ph-pill {\n  padding: 2px 9px;\n  border-radius: 11px;\n  background: var(--dsa-pill, var(--dsa-edge));\n  color: #fff;\n  font-weight: 700;\n}\n.dsa-ph-title { font-weight: 700; color: var(--dsa-ink); margin-left: auto; }\n.dsa-ph-delta { font-weight: 700; font-size: 15px; cursor: help; }\n.dsa-ph-delta.dsa-up { color: #1e6b25; }\n.dsa-ph-delta.dsa-down { color: #9b1c1c; }\n.dsa-ph-delta.dsa-same { color: #565959; }\n.dsa-ph-compare { margin-top: 6px; }\n.dsa-delta { font-weight: 700; padding: 1px 6px; border-radius: 8px; }\n.dsa-delta.dsa-up { color: #1e6b25; background: rgba(46, 125, 50, 0.12); }\n.dsa-delta.dsa-down { color: #9b1c1c; background: rgba(183, 28, 28, 0.1); }\n.dsa-delta.dsa-same { color: #565959; background: rgba(0, 0, 0, 0.06); }\n.dsa-ph-details { margin-top: 6px; }\n.dsa-ph-details > summary { cursor: pointer; color: #007185; }\n.dsa-ph-list { margin: 6px 0; padding: 0; list-style: none; }\n.dsa-ph-list li { margin: 1px 0; padding-left: 2.6em; text-indent: -2.6em; }\n.dsa-ph-list li.dsa-good { color: #1e6b25; }\n.dsa-ph-list li.dsa-bad { color: #9b1c1c; }\n.dsa-product-error { --dsa-bg: #f3f3f3; --dsa-edge: #888; --dsa-ink: #565959; }\n\n/* \"Found at MERCHANT for PRICE\" box, to the right of the price */\n.dsa-found {\n  float: right;\n  clear: right;\n  width: 44%;\n  max-width: 220px;\n  margin: 0 0 6px 8px;\n  padding: 6px 8px;\n  border-radius: 6px;\n  background: #00aaff;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  position: relative;\n  z-index: 2;\n}\n.dsa-found a { color: #0f1111 !important; text-decoration: none; }\n.dsa-found a:hover { text-decoration: underline; }\n.dsa-found .dsa-found-main { display: block; font-weight: 700; }\n.dsa-found .dsa-found-google { display: block; margin-top: 3px; font-size: 10.5px; text-decoration: underline; }\n\n/* \"Scan for off-Amazon prices\" */\n.dsa-scanbox { margin: 8px 0 0 50px; }\n.dsa-scan {\n  display: block; width: 100%; padding: 5px 8px; border: 1px solid #00aaff; border-radius: 6px;\n  background: #e6f6ff; color: #0f1111; font: 12px/1.3 \"Amazon Ember\", Arial, sans-serif; text-align: left; cursor: pointer;\n}\n.dsa-scan:hover:not(:disabled) { background: #ccecff; }\n.dsa-scan:disabled { cursor: progress; opacity: 0.8; }\n.dsa-scan-note { margin-top: 4px; font-size: 11px; color: #565959; }\n.dsa-scan-note:empty { display: none; }\n\n/* ---------- Amazon's dark mode (html.dsa-dark, set when the page behind the results is dark) ---------- */\n/* Every text colour below is at least 4.5:1 on its background. */\n.dsa-dark #dsa-toggle { background: #1d2421; border-color: #6a9f3a; color: #e3e6e6; }\n.dsa-dark #dsa-toggle.dsa-float { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }\n.dsa-dark .dsa-track { background: #5f6363; }\n.dsa-dark .dsa-status,\n.dsa-dark .dsa-scan-note,\n.dsa-dark .dsa-muted { color: #b9bdbd; }\n.dsa-dark .dsa-manage,\n.dsa-dark .dsa-ph-details > summary { color: #4fc3e0; }\n.dsa-dark .dsa-scan { background: #0b3a52; color: #e3e6e6; }\n.dsa-dark .dsa-scan:hover:not(:disabled) { background: #0e4a68; }\n.dsa-dark .dsa-badge-body { background: #22272a; color: #e3e6e6; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6); }\n.dsa-dark .dsa-badge li.dsa-good,\n.dsa-dark .dsa-ph-list li.dsa-good,\n.dsa-dark .dsa-ph-delta.dsa-up,\n.dsa-dark .dsa-delta.dsa-up { color: #86e08f; }\n.dsa-dark .dsa-badge li.dsa-bad,\n.dsa-dark .dsa-ph-list li.dsa-bad,\n.dsa-dark .dsa-ph-delta.dsa-down,\n.dsa-dark .dsa-delta.dsa-down { color: #ff9a8f; }\n.dsa-dark .dsa-ph-delta.dsa-same,\n.dsa-dark .dsa-delta.dsa-same { color: #b9bdbd; }\n.dsa-dark .dsa-brandname { color: #e3e6e6; }\n.dsa-dark .dsa-brandrow { border-top-color: rgba(255, 255, 255, 0.15); }\n.dsa-dark .dsa-pitem { border-bottom-color: #3a4044; }\n.dsa-dark .dsa-btn { background: #2b3134; border-color: #5f6363; color: #e3e6e6; }\n.dsa-dark .dsa-btn:hover { background: #363d41; }\n.dsa-dark .dsa-btn.dsa-trust { border-color: #4caf50; color: #86e08f; }\n.dsa-dark .dsa-btn.dsa-block { border-color: #e57373; color: #ff9a8f; }\n.dsa-dark .dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }\n.dsa-dark .dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }\n.dsa-dark .dsa-product { color: #e3e6e6; }\n.dsa-dark .dsa-product-error { --dsa-bg: #2b3134; --dsa-edge: #8a9093; --dsa-ink: #b9bdbd; }\n\n/* ---------- tile view (html.dsa-tiles) ----------\n   Amazon's row-by-row list becomes a grid of cards: each result's picture-left/text-right row is\n   stacked into a column, and everything else in the results area (headings, pagination) spans the\n   full width. Amazon's own tile searches come through unchanged in shape. */\nhtml.dsa-tiles .s-main-slot {\n  display: grid !important;\n  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;\n  grid-template-rows: none !important;\n  grid-auto-flow: row !important;\n  grid-auto-columns: auto !important;\n  gap: 12px 10px;\n  align-items: stretch;\n  margin: 0 !important;\n}\n@media (max-width: 600px) {\n  html.dsa-tiles .s-main-slot { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; gap: 8px 6px; }\n}\nhtml.dsa-tiles .s-main-slot > * { grid-column: 1 / -1; min-width: 0; }\nhtml.dsa-tiles .s-main-slot > div[data-component-type=\"s-search-result\"] {\n  grid-column: auto;\n  width: auto !important;\n  max-width: none !important;\n  padding: 0 !important;\n  margin: 0 !important;\n}\nhtml.dsa-tiles .s-main-slot > div[data-component-type=\"s-search-result\"] > .sg-col-inner { height: 100%; padding: 0 !important; margin: 0 !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-widget-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-card-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-card-container > .a-section { height: 100%; box-sizing: border-box; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-row { flex-direction: column; flex-wrap: nowrap; margin: 0 !important; width: 100% !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-col {\n  width: 100% !important;\n  max-width: 100% !important;\n  min-width: 0 !important;\n  flex: none !important;\n  padding: 0 6px !important;\n  display: block !important;\n}\n/* Every tile's photo gets the same box, and Amazon's \"Best Seller\" / \"Overall Pick\" label sits over\n   its top-left corner instead of above it, so titles and prices line up across a row. */\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-col-inner { position: relative; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-list-status-badge-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puis-status-badge-container {\n  position: absolute !important;\n  top: 4px;\n  left: 0;\n  z-index: 3;\n  width: auto !important;\n  height: auto !important;\n  margin: 0 !important;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-product-image-container {\n  height: 206px !important;\n  box-sizing: border-box;\n  overflow: hidden;\n  padding: 26px 0 0 !important;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-product-image-container img.s-image {\n  max-height: 180px !important;\n  width: auto !important;\n  max-width: 100% !important;\n  margin: 0 auto;\n  display: block;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] h2 { font-size: 14px !important; line-height: 1.35 !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] [data-cy=\"title-recipe\"] { padding-right: 0 !important; }\nhtml.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4px 0 6px; }\n";
+  style.textContent = "/* AmazonPlus \u2014 injected styles. Everything is prefixed dsa- to stay out of Amazon's way. */\n\n/* ---------- toggle ---------- */\n#dsa-toggle {\n  box-sizing: border-box;\n  margin: 0 0 14px;\n  padding: 10px 12px;\n  border: 2px solid #8bc34a;\n  border-radius: 10px;\n  background: #fbfdf7;\n  font-family: \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n#dsa-toggle.dsa-inline { max-width: 360px; margin: 8px 0 12px; }\n/* Floating at the top of the window once its place in the column has scrolled away */\n#dsa-toggle.dsa-float {\n  position: fixed;\n  top: 8px;\n  z-index: 300;\n  margin: 0;\n  max-height: calc(100vh - 16px);\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);\n}\n#dsa-toggle.dsa-float.dsa-float-tall { overflow-y: auto; }\n\n/* The logo button: only shown while the box is shrunk (phones, while scrolling). */\n#dsa-toggle .dsa-logo { display: none; }\n#dsa-toggle.dsa-mini {\n  width: auto !important;\n  padding: 0;\n  border: 0;\n  background: none;\n  box-shadow: none;\n  overflow: visible;\n}\n#dsa-toggle.dsa-mini > :not(.dsa-logo) { display: none !important; }\n#dsa-toggle.dsa-mini .dsa-logo {\n  display: block;\n  padding: 0;\n  margin: 0;\n  border: 0;\n  background: none;\n  cursor: pointer;\n  line-height: 0;\n}\n#dsa-toggle.dsa-mini .dsa-logo img {\n  display: block;\n  width: var(--dsa-logo-w, 40px);\n  height: auto;\n  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));\n}\n#dsa-toggle.dsa-mini .dsa-logo-text {\n  display: block;\n  width: var(--dsa-logo-w, 40px);\n  font: 700 30px/1 Arial, sans-serif;\n  color: #2e7d32;\n  text-shadow: 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.5);\n}\n#dsa-toggle.dsa-mini .dsa-logo-text b { color: #f5a623; font-size: 22px; vertical-align: top; }\n#dsa-toggle.dsa-mini.dsa-off .dsa-logo-text, #dsa-toggle.dsa-mini.dsa-off .dsa-logo-text b { color: #767676; }\n/* AmazonPlus off: the logo in grey. */\n#dsa-toggle.dsa-mini.dsa-off .dsa-logo img {\n  filter: grayscale(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));\n}\n/* The tap target stays a comfortable size even though the logo is small. */\n#dsa-toggle.dsa-mini .dsa-logo { padding: 4px; margin: -4px; }\n\n.dsa-switch {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  cursor: pointer;\n  user-select: none;\n}\n.dsa-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }\n.dsa-track {\n  position: relative;\n  flex: none;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  background: #b9bdbd;\n  transition: background 0.15s;\n}\n.dsa-thumb {\n  position: absolute;\n  top: 3px;\n  left: 3px;\n  width: 16px;\n  height: 16px;\n  border-radius: 50%;\n  background: #fff;\n  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);\n  transition: transform 0.15s;\n}\n.dsa-switch input:checked + .dsa-track { background: #2e7d32; }\n.dsa-switch input:checked + .dsa-track .dsa-thumb { transform: translateX(18px); }\n.dsa-switch input:focus-visible + .dsa-track { outline: 2px solid #007185; outline-offset: 2px; }\n.dsa-label { font-size: 16px; font-weight: 700; }\n.dsa-unit { margin-bottom: 6px; }\n\n.dsa-status { margin: 6px 0 0 50px; font-size: 12px; color: #565959; }\n.dsa-legend { margin: 8px 0 0 50px; }\n.dsa-legend span {\n  display: block;\n  height: 6px;\n  border-radius: 3px;\n  background: linear-gradient(90deg, hsl(120 70% 40%), hsl(60 70% 45%), hsl(0 70% 45%));\n}\n\n/* ---------- rated cards ---------- */\n.dsa-paint {\n  background: var(--dsa-bg) !important;\n  box-shadow: inset 6px 0 0 var(--dsa-edge) !important;\n  border-radius: 8px;\n}\n/* Amazon paints white boxes inside the card; let the tint show through. */\n.dsa-paint .a-section,\n.dsa-paint .s-card-border,\n.dsa-paint .puis-card-border,\n.dsa-paint .s-card-container,\n.dsa-paint .puis-padding-left-small {\n  background: transparent !important;\n}\n/* Keep product photos true to colour: a plain white box behind the image, no blending. */\n.dsa-paint .s-product-image-container {\n  background: #fff !important;\n  border-radius: 6px;\n}\n.dsa-paint .s-image { mix-blend-mode: normal !important; }\n\n.dsa-dupe { display: none !important; }\n\n/* ---------- trust badge: a small pill over the card's top-right corner ---------- */\n.dsa-rated { position: relative; }\n.dsa-rated:has(.dsa-badge[open]) { z-index: 60; }\n.dsa-wide [data-cy=\"title-recipe\"] { padding-right: 130px; }       /* open popover sits above neighbouring cards */\n.dsa-badge {\n  position: absolute;\n  top: 6px;\n  right: 6px;\n  z-index: 30;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  color: var(--dsa-ink);\n  text-align: left;\n}\n.dsa-badge > summary {\n  display: inline-block;\n  padding: 2px 8px;\n  border-radius: 11px;\n  background: var(--dsa-pill, var(--dsa-edge));\n  color: #fff;\n  font-weight: 700;\n  white-space: nowrap;\n  cursor: pointer;\n  list-style: none;\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);\n}\n.dsa-badge > summary::-webkit-details-marker { display: none; }\n.dsa-badge > summary::marker { content: \"\"; }\n.dsa-badge > summary::after { content: \" \\25BE\"; font-weight: 400; }\n.dsa-badge[open] > summary::after { content: \" \\25B4\"; }\n.dsa-badge .dsa-score { font-weight: 400; opacity: 0.85; }\n.dsa-badge li { margin: 1px 0; white-space: pre-wrap; padding-left: 2.2em; text-indent: -2.2em; }\n.dsa-badge li.dsa-good { color: #1e6b25; }\n.dsa-badge li.dsa-bad { color: #9b1c1c; }\n\n/* ---------- brand buttons (badge + manager) ---------- */\n.dsa-badge-body {\n  position: absolute;\n  top: calc(100% + 4px);\n  right: 0;\n  width: 280px;\n  max-width: 80vw;\n  max-height: 60vh;\n  overflow-y: auto;\n  padding: 10px 12px;\n  border: 1px solid var(--dsa-edge);\n  border-radius: 8px;\n  background: #fff;\n  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);\n}\n\n.dsa-badge .dsa-badge-body ul { margin: 0; padding: 0; list-style: none; background: none; }\n.dsa-brandrow {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  margin-top: 8px;\n  padding-top: 8px;\n  border-top: 1px solid rgba(0, 0, 0, 0.12);\n}\n.dsa-brandname { font-weight: 700; color: #0f1111; margin-right: auto; }\n.dsa-muted { color: #565959; font-size: 12px; }\n.dsa-btn {\n  font: 12px/1 \"Amazon Ember\", Arial, sans-serif;\n  padding: 5px 9px;\n  border: 1px solid #b9bdbd;\n  border-radius: 12px;\n  background: #fff;\n  color: #0f1111;\n  cursor: pointer;\n}\n.dsa-btn:hover { background: #f3f3f3; }\n.dsa-btn.dsa-trust { border-color: #2e7d32; color: #1e6b25; }\n.dsa-btn.dsa-block { border-color: #b71c1c; color: #9b1c1c; }\n.dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }\n.dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }\n.dsa-btn.dsa-x { padding: 3px 8px; font-size: 14px; }\n.dsa-btn.dsa-reset { margin-left: auto; }\n\n.dsa-manage {\n  display: block;\n  margin: 8px 0 0 50px;\n  padding: 0;\n  border: 0;\n  background: none;\n  color: #007185;\n  font: 12px \"Amazon Ember\", Arial, sans-serif;\n  cursor: pointer;\n  text-align: left;\n}\n.dsa-manage:hover { text-decoration: underline; }\n.dsa-panel {\n  margin-top: 8px;\n  max-height: 360px;\n  overflow-y: auto;\n  font: 12px/1.4 \"Amazon Ember\", Arial, sans-serif;\n}\n.dsa-panel[hidden] { display: none; }\n.dsa-phead { margin: 8px 0 4px; font-weight: 700; font-size: 12px; }\n.dsa-plist { margin: 0; padding: 0; list-style: none; }\n.dsa-pitem {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px 6px;\n  padding: 4px 0;\n  border-bottom: 1px solid #eee;\n}\n.dsa-pname { font-weight: 700; margin-right: auto; word-break: break-word; }\n.dsa-ptag { font-size: 11px; padding: 1px 6px; border-radius: 8px; color: #fff; }\n.dsa-ptag.dsa-trust { background: #2e7d32; }\n.dsa-ptag.dsa-block { background: #b71c1c; }\n.dsa-pactions { display: flex; gap: 4px; width: 100%; justify-content: flex-end; }\n.dsa-pitem .dsa-btn { padding: 3px 7px; font-size: 11px; }\n.dsa-pfoot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }\n\n/* ---------- promos / ad blocks between results ---------- */\n.dsa-clutter,\n.dsa-stray-head { display: none !important; }\n\n/* ---------- product page panel ---------- */\n.dsa-checked { font-weight: 700; }\n.dsa-product {\n  margin: 8px 0 10px;\n  padding: 8px 12px 8px 14px;\n  border-radius: 8px;\n  background: var(--dsa-bg);\n  box-shadow: inset 6px 0 0 var(--dsa-edge);\n  font: 13px/1.4 \"Amazon Ember\", Arial, sans-serif;\n  color: #0f1111;\n}\n.dsa-ph-head { display: flex; align-items: center; gap: 8px; }\n.dsa-ph-pill {\n  padding: 2px 9px;\n  border-radius: 11px;\n  background: var(--dsa-pill, var(--dsa-edge));\n  color: #fff;\n  font-weight: 700;\n}\n.dsa-ph-title { font-weight: 700; color: var(--dsa-ink); margin-left: auto; }\n.dsa-ph-delta { font-weight: 700; font-size: 15px; cursor: help; }\n.dsa-ph-delta.dsa-up { color: #1e6b25; }\n.dsa-ph-delta.dsa-down { color: #9b1c1c; }\n.dsa-ph-delta.dsa-same { color: #565959; }\n.dsa-ph-compare { margin-top: 6px; }\n.dsa-delta { font-weight: 700; padding: 1px 6px; border-radius: 8px; }\n.dsa-delta.dsa-up { color: #1e6b25; background: rgba(46, 125, 50, 0.12); }\n.dsa-delta.dsa-down { color: #9b1c1c; background: rgba(183, 28, 28, 0.1); }\n.dsa-delta.dsa-same { color: #565959; background: rgba(0, 0, 0, 0.06); }\n.dsa-ph-details { margin-top: 6px; }\n.dsa-ph-details > summary { cursor: pointer; color: #007185; }\n.dsa-ph-list { margin: 6px 0; padding: 0; list-style: none; }\n.dsa-ph-list li { margin: 1px 0; padding-left: 2.6em; text-indent: -2.6em; }\n.dsa-ph-list li.dsa-good { color: #1e6b25; }\n.dsa-ph-list li.dsa-bad { color: #9b1c1c; }\n.dsa-product-error { --dsa-bg: #f3f3f3; --dsa-edge: #888; --dsa-ink: #565959; }\n\n/* \"Found at MERCHANT for PRICE\" box, to the right of the price */\n.dsa-found {\n  float: right;\n  clear: right;\n  width: 44%;\n  max-width: 220px;\n  margin: 0 0 6px 8px;\n  padding: 6px 8px;\n  border-radius: 6px;\n  background: #00aaff;\n  font: 12px/1.35 \"Amazon Ember\", Arial, sans-serif;\n  position: relative;\n  z-index: 2;\n}\n.dsa-found a { color: #0f1111 !important; text-decoration: none; }\n.dsa-found a:hover { text-decoration: underline; }\n.dsa-found .dsa-found-main { display: block; font-weight: 700; }\n.dsa-found .dsa-found-google { display: block; margin-top: 3px; font-size: 10.5px; text-decoration: underline; }\n\n/* \"Scan for off-Amazon prices\" */\n.dsa-scanbox { margin: 8px 0 0 50px; }\n.dsa-scan {\n  display: block; width: 100%; padding: 5px 8px; border: 1px solid #00aaff; border-radius: 6px;\n  background: #e6f6ff; color: #0f1111; font: 12px/1.3 \"Amazon Ember\", Arial, sans-serif; text-align: left; cursor: pointer;\n}\n.dsa-scan:hover:not(:disabled) { background: #ccecff; }\n.dsa-scan:disabled { cursor: progress; opacity: 0.8; }\n.dsa-scan-note { margin-top: 4px; font-size: 11px; color: #565959; }\n.dsa-scan-note:empty { display: none; }\n\n/* ---------- Amazon's dark mode (html.dsa-dark, set when the page behind the results is dark) ---------- */\n/* Every text colour below is at least 4.5:1 on its background. */\n.dsa-dark #dsa-toggle { background: #1d2421; border-color: #6a9f3a; color: #e3e6e6; }\n.dsa-dark #dsa-toggle.dsa-float:not(.dsa-mini) { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }\n.dsa-dark .dsa-track { background: #5f6363; }\n.dsa-dark .dsa-status,\n.dsa-dark .dsa-scan-note,\n.dsa-dark .dsa-muted { color: #b9bdbd; }\n.dsa-dark .dsa-manage,\n.dsa-dark .dsa-ph-details > summary { color: #4fc3e0; }\n.dsa-dark .dsa-scan { background: #0b3a52; color: #e3e6e6; }\n.dsa-dark .dsa-scan:hover:not(:disabled) { background: #0e4a68; }\n.dsa-dark .dsa-badge-body { background: #22272a; color: #e3e6e6; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6); }\n.dsa-dark .dsa-badge li.dsa-good,\n.dsa-dark .dsa-ph-list li.dsa-good,\n.dsa-dark .dsa-ph-delta.dsa-up,\n.dsa-dark .dsa-delta.dsa-up { color: #86e08f; }\n.dsa-dark .dsa-badge li.dsa-bad,\n.dsa-dark .dsa-ph-list li.dsa-bad,\n.dsa-dark .dsa-ph-delta.dsa-down,\n.dsa-dark .dsa-delta.dsa-down { color: #ff9a8f; }\n.dsa-dark .dsa-ph-delta.dsa-same,\n.dsa-dark .dsa-delta.dsa-same { color: #b9bdbd; }\n.dsa-dark .dsa-brandname { color: #e3e6e6; }\n.dsa-dark .dsa-brandrow { border-top-color: rgba(255, 255, 255, 0.15); }\n.dsa-dark .dsa-pitem { border-bottom-color: #3a4044; }\n.dsa-dark .dsa-btn { background: #2b3134; border-color: #5f6363; color: #e3e6e6; }\n.dsa-dark .dsa-btn:hover { background: #363d41; }\n.dsa-dark .dsa-btn.dsa-trust { border-color: #4caf50; color: #86e08f; }\n.dsa-dark .dsa-btn.dsa-block { border-color: #e57373; color: #ff9a8f; }\n.dsa-dark .dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }\n.dsa-dark .dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }\n.dsa-dark .dsa-product { color: #e3e6e6; }\n.dsa-dark .dsa-product-error { --dsa-bg: #2b3134; --dsa-edge: #8a9093; --dsa-ink: #b9bdbd; }\n\n/* ---------- tile view (html.dsa-tiles) ----------\n   Amazon's row-by-row list becomes a grid of cards: each result's picture-left/text-right row is\n   stacked into a column, and everything else in the results area (headings, pagination) spans the\n   full width. Amazon's own tile searches come through unchanged in shape. */\nhtml.dsa-tiles .s-main-slot {\n  display: grid !important;\n  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;\n  grid-template-rows: none !important;\n  grid-auto-flow: row !important;\n  grid-auto-columns: auto !important;\n  gap: 12px 10px;\n  align-items: stretch;\n  margin: 0 !important;\n}\n@media (max-width: 600px) {\n  html.dsa-tiles .s-main-slot { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; gap: 8px 6px; }\n}\nhtml.dsa-tiles .s-main-slot > * { grid-column: 1 / -1; min-width: 0; }\nhtml.dsa-tiles .s-main-slot > div[data-component-type=\"s-search-result\"] {\n  grid-column: auto;\n  width: auto !important;\n  max-width: none !important;\n  padding: 0 !important;\n  margin: 0 !important;\n}\nhtml.dsa-tiles .s-main-slot > div[data-component-type=\"s-search-result\"] > .sg-col-inner { height: 100%; padding: 0 !important; margin: 0 !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-widget-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-card-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-card-container > .a-section { height: 100%; box-sizing: border-box; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-row { flex-direction: column; flex-wrap: nowrap; margin: 0 !important; width: 100% !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-col {\n  width: 100% !important;\n  max-width: 100% !important;\n  min-width: 0 !important;\n  flex: none !important;\n  padding: 0 6px !important;\n  display: block !important;\n}\n/* Every tile's photo gets the same box, and Amazon's \"Best Seller\" / \"Overall Pick\" label sits over\n   its top-left corner instead of above it, so titles and prices line up across a row. */\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puisg-col-inner { position: relative; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-list-status-badge-container,\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .puis-status-badge-container {\n  position: absolute !important;\n  top: 4px;\n  left: 0;\n  z-index: 3;\n  width: auto !important;\n  height: auto !important;\n  margin: 0 !important;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-product-image-container {\n  height: 206px !important;\n  box-sizing: border-box;\n  overflow: hidden;\n  padding: 26px 0 0 !important;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] .s-product-image-container img.s-image {\n  max-height: 180px !important;\n  width: auto !important;\n  max-width: 100% !important;\n  margin: 0 auto;\n  display: block;\n}\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] h2 { font-size: 14px !important; line-height: 1.35 !important; }\nhtml.dsa-tiles div[data-component-type=\"s-search-result\"] [data-cy=\"title-recipe\"] { padding-right: 0 !important; }\nhtml.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4px 0 6px; }\n";
   (document.head || document.documentElement).appendChild(style);
 })();
 
@@ -45,7 +45,7 @@ globalThis.DSA_CONFIG = {
   // model number on UPCitemdb's free plan and shows "Found at MERCHANT for PRICE". Userscript only.
   priceCheck: {
     enabled: true,
-    minPrice: 30,          // only listings over this price
+    minPrice: 0,           // only listings over this price (0 = any price)
     searchLimit: 20,       // UPCitemdb's free plan: 100 requests a day, of which 20 can be searches
     delayMs: 3000,         // between requests, one at a time
     cacheHours: 72,        // results (found or not) are reused for this long
@@ -160,6 +160,14 @@ globalThis.DSA_CONFIG = {
 };
 
 if (typeof module !== "undefined") module.exports = DSA_CONFIG;
+
+;
+// ---- src/logo.js ----
+// AmazonPlus logo (the "a+" mark), shown on phones when the box shrinks while you scroll.
+// Embedded so the script makes no request to fetch it.
+(function (root) {
+  root.DSA_LOGO = "data:image/webp;base64,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";
+})(typeof globalThis !== "undefined" ? globalThis : this);
 
 ;
 // ---- src/brands.js ----
@@ -1978,7 +1986,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
 
   // ---------- "Found at MERCHANT for PRICE" (off-Amazon price scan, UPCitemdb) ----------
   // Nothing is looked up automatically. "Scan for off-Amazon prices" in the AmazonPlus box looks up
-  // listings anywhere on Amazon that have a manufacturer model number and cost over $30, one at a time,
+  // listings anywhere on Amazon that have a manufacturer model number (any price), one at a time,
   // on UPCitemdb's free plan (100 requests a day per connection, no sign-up), as they scroll into view,
   // and shows the cheapest identical item sold new elsewhere. Results are kept for 72 hours.
   // Userscript only (GM_xmlhttpRequest).
@@ -2118,7 +2126,8 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     if (scanOn) { scanOn = false; scanQueue.length = 0; scanQueued.clear(); scanNote = scanSummary("Stopped."); updateScanButton(); return; }
     const eligible = cards().filter(c => c.dataset.dsaPriceQ && !c.classList.contains("dsa-dupe"));
     if (!eligible.length) {
-      scanNote = "No listings here have a manufacturer model number and a price over $" + (PC.minPrice || 0) + ".";
+      scanNote = PC.minPrice ? "No listings here have a manufacturer model number and a price over $" + PC.minPrice + "."
+        : "No listings here have a manufacturer model number.";
       updateScanButton();
       return;
     }
@@ -2523,6 +2532,146 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     }
   }
 
+
+  // ---------- phone site: the "Sort by" chips in Amazon's Filters sheet ----------
+  // The phone site has no sort menu; sorting lives as a row of chips ("Featured", "Price: Low to
+  // High", \u2026) inside the Filters sheet. Our two sorts are added as chips of the same look, and the
+  // chip that's lit up follows the order actually on screen. Found by its labels, not Amazon's class
+  // names, so a restyle doesn't break it; if the row isn't recognised, nothing is added.
+  const MOBILE_SORT_LABELS = ["Price: Low to High", "Price: High to Low", "Avg. Customer Review", "Best Sellers", "Newest Arrivals"];
+  const isOn = el => /^(true|page|step|location|date)$/i.test(el.getAttribute("aria-checked") || el.getAttribute("aria-selected") ||
+    el.getAttribute("aria-pressed") || el.getAttribute("aria-current") || "");
+  let mobileSort = null;     // { row, chips: [Amazon's chips], plain, lit, litChip, litOriginal, ours: {trust, unit} }
+
+  function findMobileSortRow() {
+    if (sortSelect() && sortSelect().offsetParent) return null;          // desktop: the menu handles it
+    let hit = null;
+    try {
+      const x = document.evaluate("//*[normalize-space(text())='Price: Low to High']", document.body, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      for (let i = 0; i < x.snapshotLength && !hit; i++) {
+        const n = x.snapshotItem(i);
+        if (n.closest("select, option, .a-popover, .a-dropdown-common, #dsa-toggle") || !n.getClientRects().length) continue;
+        hit = n;
+      }
+    } catch (e) { return null; }
+    if (!hit) return null;
+    // The chip: the largest ancestor whose text is still just this label; the row: its parent.
+    let chip = hit;
+    while (chip.parentElement && chip.parentElement.textContent.trim() === "Price: Low to High") chip = chip.parentElement;
+    const row = chip.parentElement;
+    if (!row) return null;
+    const chips = [...row.children].filter(c => !c.dataset.dsaSort);
+    const labels = chips.map(c => c.textContent.trim());
+    if (labels.filter(l => MOBILE_SORT_LABELS.includes(l) || l === "Featured").length < 3) return null;
+    return { row, chips };
+  }
+
+  // Which chip looks selected, and what a plain one looks like.
+  function chipLooks(chips) {
+    let lit = chips.find(c => isOn(c) || c.querySelector("[aria-checked=true],[aria-selected=true],[aria-pressed=true],[aria-current]:not([aria-current=false])"));
+    if (!lit) {
+      const count = new Map();
+      chips.forEach(c => count.set(c.className, (count.get(c.className) || 0) + 1));
+      if (count.size === 2) lit = chips.find(c => count.get(c.className) === 1 && chips.length > 2);
+    }
+    const plainChip = chips.find(c => c !== lit && c.className !== (lit && lit.className)) || chips[chips.length - 1];
+    return { lit, plainChip };
+  }
+
+  // Copy the look (classes and aria state, recursively) of one chip onto another of the same shape.
+  function copyLook(from, to) {
+    to.className = from.className;
+    for (const a of ["aria-checked", "aria-selected", "aria-pressed", "aria-current"]) {
+      if (from.hasAttribute(a)) to.setAttribute(a, from.getAttribute(a)); else to.removeAttribute(a);
+    }
+    const f = [...from.children], t = [...to.children];
+    if (f.length === t.length) f.forEach((c, i) => copyLook(c, t[i]));
+  }
+
+  function makeChip(template, label, key) {
+    const chip = template.cloneNode(true);
+    // Strip everything that could make it act like Amazon's chip (links, ids, data, form fields).
+    for (const e of [chip, ...chip.querySelectorAll("*")]) {
+      for (const a of [...e.attributes]) if (!/^(class|style|aria-(checked|selected|pressed|current|hidden)|role)$/.test(a.name)) e.removeAttribute(a.name);
+    }
+    chip.querySelectorAll("input, img, svg").forEach(n => n.remove());
+    let leaf = chip;
+    while (leaf.children.length) leaf = [...leaf.children].find(c => c.textContent.trim()) || leaf.children[0];
+    leaf.textContent = label;
+    chip.dataset.dsaSort = key;
+    chip.setAttribute("role", "button");
+    chip.setAttribute("tabindex", "0");
+    chip.style.cursor = "pointer";
+    const go = e => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setSortChoice(key);
+      setFeaturedFor("");
+      showMobileSort();
+      apply();
+      closeSheet(chip);
+    };
+    chip.addEventListener("click", go, true);
+    chip.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") go(e); }, true);
+    return chip;
+  }
+
+  // The sheet's close (\u2715) button: the nearest one up from the chips.
+  function closeSheet(from) {
+    for (let e = from.parentElement; e && e !== document.body; e = e.parentElement) {
+      const btn = [...e.querySelectorAll('button, [role=button], a')].find(b =>
+        /^(close|dismiss)/i.test(b.getAttribute("aria-label") || b.getAttribute("title") || "") || /^[\u2715\u00d7\u2716xX]$/.test(b.textContent.trim()));
+      if (btn) { btn.click(); return; }
+    }
+  }
+
+  // Light up the chip for the order on screen: ours, or Amazon's own as Amazon left it.
+  function showMobileSort() {
+    const m = mobileSort;
+    if (!m || !m.row.isConnected) return;
+    const mode = currentMode();
+    for (const key of Object.keys(m.ours)) copyLook(mode === key && m.lit ? m.lit : m.plainChip, m.ours[key]);
+    if (m.litChip) {
+      if (mode === "amazon") { if (m.litChip.className !== m.litOriginal.className) copyLook(m.litOriginal, m.litChip); }
+      else copyLook(m.plainChip, m.litChip);
+    }
+  }
+
+  function installMobileSort() {
+    if (mobileSort && mobileSort.row.isConnected) return;
+    mobileSort = null;
+    const found = findMobileSortRow();
+    if (!found) return;
+    const { lit, plainChip } = chipLooks(found.chips);
+    const ours = {};
+    for (const key of ["trust", "unit"]) {
+      ours[key] = makeChip(plainChip, SORTS[key].label, key);
+      found.row.appendChild(ours[key]);
+    }
+    mobileSort = { row: found.row, chips: found.chips, lit: lit && lit.cloneNode(true), plainChip: plainChip.cloneNode(true),
+      litChip: lit, litOriginal: lit && lit.cloneNode(true), ours };
+    showMobileSort();
+  }
+
+  function removeMobileSort() {
+    if (!mobileSort) return;
+    Object.values(mobileSort.ours).forEach(c => c.remove());
+    if (mobileSort.litChip && mobileSort.litChip.isConnected) copyLook(mobileSort.litOriginal, mobileSort.litChip);
+    mobileSort = null;
+  }
+
+  // Tapping one of Amazon's chips: Amazon's sort from now on ("Featured" = Amazon's real Featured order).
+  document.addEventListener("click", e => {
+    if (!enabled || !mobileSort || !e.target.closest) return;
+    const chip = mobileSort.chips.find(c => c.contains(e.target));
+    if (!chip) return;
+    setSortChoice(null);
+    const featured = chip.textContent.trim() === "Featured";
+    setFeaturedFor(featured ? currentQuery().toLowerCase() : "");
+    // Already on Featured: Amazon won't reload, so show its order here.
+    if (featured && isFeatured(urlSort())) setTimeout(() => { showMobileSort(); apply(); }, 0);
+  }, true);
+
   document.addEventListener("click", onSortEntry, true);
   document.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") onSortEntry(e); }, true);
   // Keyboard / native-select changes: keep Amazon from navigating to our entries.
@@ -2651,8 +2800,9 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     input.checked = enabled;
     input.addEventListener("change", () => {
       enabled = input.checked;
+      wrap.classList.toggle("dsa-off", !enabled);
       storeSet(KEY_ENABLED, enabled);
-      if (enabled) { installSortOption(); apply(); } else { removeSortOption(); restore(); }
+      if (enabled) { installSortOption(); installMobileSort(); apply(); } else { removeSortOption(); removeMobileSort(); restore(); }
       updateScanButton();
     });
     const wrap = el("div", { id: "dsa-toggle" },
@@ -2669,7 +2819,13 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
         type: "button", class: "dsa-manage",
         on: { click: e => { e.preventDefault(); panelOpen = !panelOpen; renderPanel(); } }
       }, ""),
-      el("div", { class: "dsa-panel", hidden: "" }));
+      el("div", { class: "dsa-panel", hidden: "" }),
+      // Phones: while the box floats it shrinks to this logo; a tap opens it again.
+      el("button", { type: "button", class: "dsa-logo", "aria-label": "Open AmazonPlus" },
+        el("img", { src: globalThis.DSA_LOGO || "", alt: "AmazonPlus",
+          // If the page won't show embedded images, a text "a+" mark stands in.
+          on: { error: e => e.target.replaceWith(el("span", { class: "dsa-logo-text" }, "a", el("b", {}, "+"))) } })));
+    wrap.classList.toggle("dsa-off", !enabled);      // the logo shows in grey while AmazonPlus is off
     return wrap;
   }
 
@@ -2715,8 +2871,29 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       }
       return bottom;
     };
+    // On phones (no left column, the box sits above the results) the floating box would cover a
+    // third of the screen, so it shrinks to the logo; tapping the logo opens the full box, and
+    // tapping elsewhere or scrolling on shrinks it again.
+    let expanded = false, expandedAt = 0;
+    const mini = () => {
+      const want = toggle.classList.contains("dsa-float") && toggle.classList.contains("dsa-inline") && !expanded;
+      // The logo is as wide as the on/off switch (measured while the switch is still showing).
+      const track = toggle.querySelector(".dsa-track");
+      if (want && !toggle.classList.contains("dsa-mini") && track && track.offsetWidth) toggle.style.setProperty("--dsa-logo-w", track.offsetWidth + "px");
+      toggle.classList.toggle("dsa-mini", want);
+    };
+    toggle.querySelector(".dsa-logo").addEventListener("click", e => {
+      e.preventDefault();
+      expanded = true; expandedAt = window.scrollY;
+      mini(); place();
+    });
+    document.addEventListener("click", e => {
+      if (!expanded || toggle.contains(e.target)) return;
+      expanded = false; mini(); place();
+    }, true);
     const place = () => {
       if (!toggle.classList.contains("dsa-float")) return;
+      if (expanded && Math.abs(window.scrollY - expandedAt) > 150) { expanded = false; mini(); }
       const r = spot.getBoundingClientRect();
       toggle.style.left = r.left + "px";
       toggle.style.width = r.width + "px";
@@ -2730,11 +2907,24 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       const off = !e.isIntersecting && e.boundingClientRect.top < 0;
       if (off === toggle.classList.contains("dsa-float")) return;
       if (off) {
-        spot.style.height = toggle.offsetHeight + "px";
+        expanded = false;
+        // Hold the box's place exactly, margins included: if the content below moves even a few
+        // pixels, the browser shifts the scroll position to compensate (scroll anchoring), the
+        // place comes back into view, the box docks, and it flickers on and off (seen on phones,
+        // where the box sits in the results column).
+        const below = toggle.nextElementSibling || toggle.parentElement;
+        // Page coordinates, not window ones: the browser may adjust the scroll position mid-measurement.
+        const edge = () => (below === toggle.parentElement ? below.getBoundingClientRect().bottom : below.getBoundingClientRect().top) + window.scrollY;
+        const before = edge(), height = toggle.offsetHeight;
+        spot.style.height = height + "px";
         toggle.classList.add("dsa-float");
+        const shift = before - edge();
+        if (Math.abs(shift) > 0.5) spot.style.height = (height + shift) + "px";
+        mini();
         place();
       } else {
-        toggle.classList.remove("dsa-float", "dsa-float-tall");
+        expanded = false;
+        toggle.classList.remove("dsa-float", "dsa-float-tall", "dsa-mini");
         toggle.style.left = toggle.style.width = toggle.style.top = toggle.style.maxHeight = "";
         spot.style.height = "";
       }
@@ -2768,8 +2958,8 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       if (isMediaSearch()) { leaveMediaSearch(); return; }
       placeToggle();
       const input = document.querySelector("#dsa-toggle .dsa-main");
-      if (input) input.checked = enabled;
-      if (enabled) installSortOption();
+      if (input) { input.checked = enabled; input.closest("#dsa-toggle").classList.toggle("dsa-off", !enabled); }
+      if (enabled) { installSortOption(); installMobileSort(); }
       if (enabled && cards().some(c => !c.dataset.dsaScored && !isMedia(c))) apply();
       else if (enabled && CFG.hideClutter !== false && removeClutter() !== lastPromoCount) {
         lastPromoCount = promosRemoved;
@@ -2784,6 +2974,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     if (!t && !lastResults) return;
     if (lastResults) restore();
     removeSortOption();
+    removeMobileSort();
     if (t) t.remove();
     lastResults = null;
   }

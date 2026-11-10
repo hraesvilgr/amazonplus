@@ -23,6 +23,48 @@
 }
 #dsa-toggle.dsa-float.dsa-float-tall { overflow-y: auto; }
 
+/* The logo button: only shown while the box is shrunk (phones, while scrolling). */
+#dsa-toggle .dsa-logo { display: none; }
+#dsa-toggle.dsa-mini {
+  width: auto !important;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+}
+#dsa-toggle.dsa-mini > :not(.dsa-logo) { display: none !important; }
+#dsa-toggle.dsa-mini .dsa-logo {
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+#dsa-toggle.dsa-mini .dsa-logo img {
+  display: block;
+  width: var(--dsa-logo-w, 40px);
+  height: auto;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));
+}
+#dsa-toggle.dsa-mini .dsa-logo-text {
+  display: block;
+  width: var(--dsa-logo-w, 40px);
+  font: 700 30px/1 Arial, sans-serif;
+  color: #2e7d32;
+  text-shadow: 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+#dsa-toggle.dsa-mini .dsa-logo-text b { color: #f5a623; font-size: 22px; vertical-align: top; }
+#dsa-toggle.dsa-mini.dsa-off .dsa-logo-text, #dsa-toggle.dsa-mini.dsa-off .dsa-logo-text b { color: #767676; }
+/* AmazonPlus off: the logo in grey. */
+#dsa-toggle.dsa-mini.dsa-off .dsa-logo img {
+  filter: grayscale(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));
+}
+/* The tap target stays a comfortable size even though the logo is small. */
+#dsa-toggle.dsa-mini .dsa-logo { padding: 4px; margin: -4px; }
+
 .dsa-switch {
   display: flex;
   align-items: center;
@@ -279,7 +321,7 @@
 /* ---------- Amazon's dark mode (html.dsa-dark, set when the page behind the results is dark) ---------- */
 /* Every text colour below is at least 4.5:1 on its background. */
 .dsa-dark #dsa-toggle { background: #1d2421; border-color: #6a9f3a; color: #e3e6e6; }
-.dsa-dark #dsa-toggle.dsa-float { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }
+.dsa-dark #dsa-toggle.dsa-float:not(.dsa-mini) { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }
 .dsa-dark .dsa-track { background: #5f6363; }
 .dsa-dark .dsa-status,
 .dsa-dark .dsa-scan-note,
