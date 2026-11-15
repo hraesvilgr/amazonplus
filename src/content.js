@@ -24,6 +24,13 @@
   const KEY_PRICES = "dsaOffPrices";          // off-Amazon price scans: query → { at, f: {m, p, u, at} | 0 }
   const KEY_PRICE_USAGE = "dsaUpcUsage";      // UPCitemdb free-plan use today: { used, limit, resetAt }
   const KEY_SCAN_FOLD = "dsaScanFold";        // true: the scan box is folded down to its title
+  const KEY_SCAN_FOLD_VER = "dsaScanFoldVer"; // the version that fold choice was made in (new version: folded again)
+  // This version: written in by the userscript build; the add-on reads it from its manifest.
+  const VERSION = (() => {
+    const built = "__AMAZONPLUS_VERSION__";
+    if (!/^__/.test(built)) return built;
+    try { return chrome.runtime.getManifest().version; } catch (e) { return ""; }
+  })();
   const LISTINGS_MAX = 300;                   // most recently seen listings kept
   const CHECK_TTL = 30 * 864e5;               // product-page checks are reused for 30 days
   const KEY_MEMORY = "dsaMemory";
@@ -426,11 +433,19 @@
     const ds = rows.length ? deliveryOf(rows.map(txt)) : null;
     if (ds) {
       for (const d of ds) {
-        const line = el("div", { class: "dsa-delivery" },
-          d.who ? d.who + ": " : "", (d.price ? d.price + " " : "") + "Delivery ", el("b", {}, d.when), d.min ? ` on ${d.min}+ orders` : "");
+        // Prime: the Prime arrow instead of the word, on one line.
+        // Non-Prime: the arrow in dark red with a slash through it.
+        const tag = d.who === "Prime" && globalThis.DSA_PRIME_ARROW
+          ? el("img", { class: "dsa-prime", src: globalThis.DSA_PRIME_ARROW, alt: "Prime" })
+          : d.who === "Non-Prime" && globalThis.DSA_NOPRIME_ARROW
+          ? el("img", { class: "dsa-prime dsa-noprime", src: globalThis.DSA_NOPRIME_ARROW, alt: "Non-Prime" })
+          : d.who ? d.who + ": " : "";
+        const line = el("div", { class: "dsa-delivery" + (d.who === "Prime" ? " dsa-delivery-prime" : d.who === "Non-Prime" ? " dsa-delivery-noprime" : "") },
+          tag, (d.price ? d.price + " " : "") + "Delivery ", el("b", {}, d.when), d.min ? ` on ${d.min}+ orders` : "");
         rows[0].parentElement.insertBefore(line, rows[0]);
       }
       rows.forEach(r => r.classList.add(TRIM));
+      requestAnimationFrame(() => fitDelivery(card));
     }
     // Crossed-out prices, with their "List:" / "Typical:" / "Was:" label.
     for (const p of card.querySelectorAll('.a-price[data-a-strike="true"], .a-text-price[data-a-strike="true"]')) {
@@ -490,6 +505,22 @@
     photo.classList.add("dsa-photo");
     photo.appendChild(found);
   }
+
+  // The Prime delivery line stays on one line: its text gets smaller (12px down to 10px) until it fits.
+  function fitLine(line) {
+    if (!line.isConnected || !line.clientWidth) return;
+    let size = 12;
+    line.style.fontSize = size + "px";
+    while (line.scrollWidth > line.clientWidth + 0.5 && size > 10) line.style.fontSize = (size -= 0.5) + "px";
+  }
+  // The Non-Prime line takes the same size as the card's Prime line.
+  function fitDelivery(card) {
+    const prime = card.querySelector(".dsa-delivery-prime");
+    if (!prime) return;
+    fitLine(prime);
+    card.querySelectorAll(".dsa-delivery-noprime").forEach(n => { n.style.fontSize = prime.style.fontSize; });
+  }
+  window.addEventListener("resize", () => cards().forEach(fitDelivery), { passive: true });
 
   function untidyCard(card) {
     delete card.dataset.dsaTidy;
@@ -821,6 +852,7 @@
     if (e.target.closest && e.target.closest(".dsa-scan-caret") || scanFold) {
       scanFold = !scanFold;
       storeSet(KEY_SCAN_FOLD, scanFold);
+      storeSet(KEY_SCAN_FOLD_VER, VERSION);
       updateScanButton();
       return;
     }
@@ -1599,6 +1631,7 @@
       updateScanButton();
     });
     const wrap = el("div", { id: "dsa-toggle" },
+      VERSION ? el("span", { class: "dsa-version", "aria-hidden": "true" }, "v" + VERSION) : "",
       el("label", { class: "dsa-switch" },
         input,
         el("span", { class: "dsa-track" }, el("span", { class: "dsa-thumb" })),
@@ -1851,9 +1884,10 @@
   }
 
   migrateOldSettings().then(() => Promise.all([storeGet(KEY_ENABLED, false), storeGet(KEY_MEMORY, null),
-    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false)]))
-    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold]) => {
-    scanFold = fold === true;
+    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false), storeGet(KEY_SCAN_FOLD_VER, "")]))
+    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold, foldVer]) => {
+    // The scan box starts folded after each install or update; opening or folding it is then kept.
+    scanFold = foldVer === VERSION ? fold === true : true;
     prices = priceCache && typeof priceCache === "object" ? priceCache : {};
     if (use && typeof use === "object") usage = Object.assign(usage, use);
     lastClick = clicked && typeof clicked === "object" ? clicked : null;

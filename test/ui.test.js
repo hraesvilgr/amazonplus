@@ -353,7 +353,7 @@ const products = require("./fixtures/products-2026-10-28.json");
             responseText: JSON.stringify(RESULTS[q] || { code: "OK", total: 0, items: [] }) };
       setTimeout(() => o.onload(r), 5);
     };`;
-  const scanPage = async (clear, shim, script) => {
+  const scanPage = async (clear, shim, script, keepFold) => {
     await p.goto("https://www.amazon.com/s?k=impact+drivers");
     if (clear) await p.evaluate(() => { localStorage.removeItem("gm:dsaOffPrices"); localStorage.removeItem("gm:dsaUpcUsage"); });
     await p.evaluate(() => {
@@ -368,12 +368,32 @@ const products = require("./fixtures/products-2026-10-28.json");
     await p.evaluate(shim || U_SHIM);
     await p.addScriptTag({ content: `(function(){${script || userscriptScan}\n})();` });
     await p.waitForSelector("#dsa-toggle");
+    if (keepFold) return;
+    // The scan box starts folded after an install or update: open it, as you would
+    await p.waitForTimeout(300);
+    await p.evaluate(() => { const b = document.querySelector("#dsa-toggle .dsa-scan"); if (b && b.classList.contains("dsa-fold")) b.querySelector(".dsa-scan-caret").click(); });
     await p.waitForTimeout(600);
   };
+  // After an install or update the scan box starts folded; opened, it stays open; a new version folds it again
+  const isFolded = () => p.evaluate(() => document.querySelector("#dsa-toggle .dsa-scan").classList.contains("dsa-fold"));
+  await p.goto("https://www.amazon.com/s?k=impact+drivers");
+  await p.evaluate(() => { localStorage.removeItem("gm:dsaScanFold"); localStorage.removeItem("gm:dsaScanFoldVer"); });
+  await scanPage(true, null, null, true); await p.waitForTimeout(300);
+  const foldFresh = await isFolded();
+  await p.click("#dsa-toggle .dsa-scan-caret"); await p.waitForTimeout(150);
+  await scanPage(false, null, null, true); await p.waitForTimeout(300);
+  const kept = await isFolded();
+  await p.evaluate(() => localStorage.setItem("gm:dsaScanFoldVer", JSON.stringify("0.0.1")));
+  await scanPage(false, null, null, true); await p.waitForTimeout(300);
+  const updated = await isFolded();
+  check("Scan box starts folded after an install or update; once opened it stays open, until the next update", foldFresh && !kept && updated, JSON.stringify({ foldFresh, kept, updated }));
   await scanPage(true);
   const scanBtn = async () => p.textContent("#dsa-toggle .dsa-scan-label");
   check("Price scan button carries a little flask marking it experimental (not part of its text)", await p.evaluate(() => {
     const w = document.querySelector("#dsa-toggle .dsa-scan .dsa-flask-wrap"); return !!w && w.title === "Experimental" && !!w.querySelector("svg circle.dsa-bub") && w.getBoundingClientRect().width > 8; }));
+  check("Version number, small and light grey, in the box's top-right corner", await p.evaluate(() => {
+    const t = document.getElementById("dsa-toggle"), v = t.querySelector(".dsa-version"), tr = t.getBoundingClientRect(), vr = v.getBoundingClientRect();
+    return /^v\d+\.\d+\.\d+$/.test(v.textContent) && tr.right - vr.right < 14 && vr.top - tr.top < 10 && parseFloat(getComputedStyle(v).fontSize) <= 10; }));
   check("Price scan box: grey radar on the left, flask in the top-right corner, progress note inside the box", await p.evaluate(() => {
     const b = document.querySelector("#dsa-toggle .dsa-scan"), br = b.getBoundingClientRect();
     const r = b.querySelector(".dsa-radar"), rr = r.getBoundingClientRect(), f = b.querySelector(".dsa-flask-wrap").getBoundingClientRect();
@@ -671,8 +691,23 @@ const products = require("./fixtures/products-2026-10-28.json");
     return { a: seen(a), b: seen(b), price: !!a.querySelector(".a-price:not([data-a-strike]) .a-offscreen") && a.querySelector(".a-price:not([data-a-strike])").getClientRects().length > 0 };
   });
   const td = await tidy();
-  check("Cards: delivery becomes 'Prime: Free Delivery Tomorrow, Nov 16' and 'Non-Prime: Free Delivery Fri, Nov 20 on $35+ orders'",
-    /Prime: Free Delivery Tomorrow, Nov 16/.test(td.a) && /Non-Prime: Free Delivery Fri, Nov 20 on \$35\+ orders/.test(td.a) && !/Join Prime|Non-members get|\$35 of items/.test(td.a), td.a.slice(0, 500));
+  await p.waitForTimeout(100);
+  const primeLine = await p.evaluate(() => {
+    const l = document.querySelector('[data-test-tidy="a"] .dsa-delivery-prime'), img = l && l.querySelector("img.dsa-prime");
+    return l && { text: l.textContent, alt: img && img.alt, imgW: img && Math.round(img.getBoundingClientRect().width), loaded: !!img && img.naturalWidth > 0,
+      oneLine: l.getBoundingClientRect().height < 20, fits: l.scrollWidth <= l.clientWidth + 1, font: parseFloat(getComputedStyle(l).fontSize) };
+  });
+  check("Cards: the Prime line is the Prime arrow (~30px) + 'Free Delivery Tomorrow, Nov 16', smaller and on one line",
+    !!primeLine && primeLine.text === "Free Delivery Tomorrow, Nov 16" && primeLine.alt === "Prime" && primeLine.loaded && primeLine.imgW >= 28 && primeLine.imgW <= 32 && primeLine.oneLine && primeLine.fits && primeLine.font <= 12 && primeLine.font >= 10, JSON.stringify(primeLine));
+  const nonPrime = await p.evaluate(() => {
+    const l = document.querySelector('[data-test-tidy="a"] .dsa-delivery-noprime'), img = l && l.querySelector("img.dsa-noprime");
+    const pr = document.querySelector('[data-test-tidy="a"] .dsa-delivery-prime');
+    return l && { text: l.textContent, alt: img && img.alt, imgW: img && Math.round(img.getBoundingClientRect().width), loaded: !!img && img.naturalWidth > 0,
+      font: getComputedStyle(l).fontSize, primeFont: getComputedStyle(pr).fontSize, below: l.getBoundingClientRect().top >= pr.getBoundingClientRect().bottom - 1 };
+  });
+  check("…and below it the slashed dark-red arrow + 'Free Delivery Fri, Nov 20 on $35+ orders', at the Prime line's size",
+    !!nonPrime && nonPrime.text === "Free Delivery Fri, Nov 20 on $35+ orders" && nonPrime.alt === "Non-Prime" && nonPrime.loaded && nonPrime.imgW >= 28 && nonPrime.imgW <= 32 &&
+    nonPrime.font === nonPrime.primeFont && nonPrime.below && !/Join Prime|Non-members get|\$35 of items|Non-Prime:/.test(td.a), JSON.stringify(nonPrime));
   check("…a delivery fee shows as the price ('$5.99 Delivery Nov 6 - 10')", /\$5\.99 Delivery Nov 6 - 10/.test(td.b) && !/\$5\.99 delivery/.test(td.b), td.b.slice(0, 300));
   check("…no sustainability badges, '90-day low', 'bought in past month', 'Top reviewed for' or crossed-out List/Typical prices; the real price and stock note stay",
     !/Carbon impact|Recycled materials|\+2 more|90-day low|bought in past month|Top reviewed for|List:|Typical:|\$89\.99|\$79\.99/.test(td.a + td.b) && td.price && /Only 3 left in stock/.test(td.a), td.a.slice(0, 400));
@@ -687,9 +722,9 @@ const products = require("./fixtures/products-2026-10-28.json");
     const a = document.querySelector('[data-test-tidy="a"]'), btn = a.querySelector('[aria-label="Add to compare"]');
     return !a.querySelector(".s-product-image-container").contains(btn) && !btn.closest(".dsa-compare") && btn.parentElement.parentElement === a; }));
   const untd = await tidy();
-  check("…and turning AmazonPlus off puts Amazon's wording back", /Join Prime to get FREE delivery/.test(untd.a) && /Carbon impact/.test(untd.a) && /List:/.test(untd.a) && !/Non-Prime: Free Delivery/.test(untd.a), untd.a.slice(0, 300));
+  check("…and turning AmazonPlus off puts Amazon's wording back", /Join Prime to get FREE delivery/.test(untd.a) && /Carbon impact/.test(untd.a) && /List:/.test(untd.a) && !/on \$35\+ orders/.test(untd.a), untd.a.slice(0, 300));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
-  check("…on again: tidied again", /Non-Prime: Free Delivery Fri, Nov 20/.test((await tidy()).a));
+  check("…on again: tidied again", /Free Delivery Fri, Nov 20 on \$35\+ orders/.test((await tidy()).a));
   // Results nested inside a result (seen for real: a listing squashed into thin stripes, a row of
   // 'T' pills): hidden size/colour variants inside a listing, and a group block showing products side by side
   const nestInject = `(() => {
@@ -716,6 +751,27 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Results inside a result: hidden variants stay hidden (no thin stripes), the listing stays a normal tile, no pills on nested results",
     nest.vTile && nest.vW < 320 && nest.vH < 900 && nest.variantsHidden && nest.nestedBadges === 0 && nest.outerBadges, JSON.stringify(nest));
   check("…and a block showing several products side by side keeps the full width", nest.gGroup && nest.gFull, JSON.stringify(nest));
+  // Signed-in shoppers get a banner first in the results whose Amazon style spans 20 grid columns
+  // (seen for real: every tile squashed to 3px wide and 1,051px tall)
+  await load("baguette tray", `(() => {
+    const st = document.createElement("style");
+    st.textContent = "#search .s-main-slot.s-result-list > div.sg-col-20-of-24.s-widget { grid-column: span 20; } #search .s-main-slot.s-result-list > div.sg-col-4-of-24 { grid-column: span 4; }";
+    document.head.appendChild(st);
+    const slot = document.querySelector(".s-main-slot");
+    if (!document.getElementById("search")) { const w = document.createElement("div"); w.id = "search"; slot.parentElement.insertBefore(w, slot); w.appendChild(slot); }
+    slot.classList.add("s-result-list");
+    slot.querySelectorAll('div[data-component-type="s-search-result"]').forEach(c => c.classList.add("sg-col-4-of-24"));
+    slot.insertAdjacentHTML("afterbegin", '<div class="sg-col-20-of-24 s-result-item s-widget sg-col s-flex-geom" data-asin=""><div style="height:109px">Narrow your search</div></div>');
+  })();`);
+  await p.waitForTimeout(500);
+  const banner = await p.evaluate(() => {
+    const cs = [...document.querySelectorAll(".s-main-slot > .dsa-tile")].filter(c => c.offsetParent);
+    const b = document.querySelector(".s-flex-geom").getBoundingClientRect(), slot = document.querySelector(".s-main-slot").getBoundingClientRect();
+    return { minW: Math.round(Math.min(...cs.map(c => c.getBoundingClientRect().width))), maxH: Math.round(Math.max(...cs.map(c => c.getBoundingClientRect().height))),
+      cols: getComputedStyle(document.querySelector(".s-main-slot")).gridTemplateColumns.split(" ").length, bannerFull: b.width > slot.width * 0.9 };
+  });
+  check("Signed-in banner that Amazon spans over 20 columns: tiles keep their normal width, the banner the full row",
+    banner.minW > 150 && banner.maxH < 900 && banner.cols <= 8 && banner.bannerFull, JSON.stringify(banner));
   // Phone layout (no filter column; the box sits above the results)
   await p.setViewportSize({ width: 390, height: 800 });
   await p.goto("https://www.amazon.com/s?k=baguette+tray");

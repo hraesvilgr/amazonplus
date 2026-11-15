@@ -11,6 +11,7 @@ const manifest = JSON.parse(read("manifest.json"));
 const js = ["src/config.js", "src/logo.js", "src/radar.js", "src/brands.js", "src/bigrams.js", "src/scorer.js", "src/memory.js", "src/product.js", "src/pricecheck.js", "src/content.js"]
   .map(f => `// ---- ${f} ----\n` + read(f))
   .join("\n;\n")
+  .replace(/__AMAZONPLUS_VERSION__/g, manifest.version)
   .replace("var DSA_CONFIG =", "globalThis.DSA_CONFIG =")
   .replace("var DSA_BIGRAMS =", "globalThis.DSA_BIGRAMS =")
   .replace("var DSA_BRANDS =", "globalThis.DSA_BRANDS =");

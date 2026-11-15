@@ -2,6 +2,7 @@
 
 /* ---------- toggle ---------- */
 #dsa-toggle {
+  position: relative;
   box-sizing: border-box;
   margin: 0 0 14px;
   padding: 10px 12px;
@@ -11,6 +12,9 @@
   font-family: "Amazon Ember", Arial, sans-serif;
   color: #0f1111;
 }
+/* The version, small and light grey, in the top-right corner. */
+#dsa-toggle .dsa-version { position: absolute; top: 4px; right: 8px; font-size: 10px; line-height: 1; color: #a3a8a8; pointer-events: none; }
+.dsa-dark #dsa-toggle .dsa-version { color: #6f7575; }
 /* Phones: only as wide as what's in it (up to 360px). */
 #dsa-toggle.dsa-inline { width: -moz-fit-content; width: fit-content; max-width: min(360px, 100%); margin: 8px 0 12px; }
 /* The scan button and the brand list wrap to that width rather than widening the box. */
@@ -404,9 +408,12 @@ html.dsa-tiles .s-main-slot {
 @media (max-width: 600px) {
   html.dsa-tiles .s-main-slot { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; gap: 8px 6px; }
 }
-html.dsa-tiles .s-main-slot > * { grid-column: 1 / -1; min-width: 0; }
+/* Everything that isn't a tile spans the whole row, and each tile takes one column. !important:
+   Amazon's own grid classes say otherwise for some items (e.g. a banner it shows signed-in shoppers,
+   sg-col-20-of-24, "span 20"), which would add a run of hairline columns and squash every tile. */
+html.dsa-tiles .s-main-slot > * { grid-column: 1 / -1 !important; grid-row: auto !important; min-width: 0; }
 html.dsa-tiles .s-main-slot > .dsa-tile {
-  grid-column: auto;
+  grid-column: auto / span 1 !important;
   width: auto !important;
   max-width: none !important;
   padding: 0 !important;
@@ -460,7 +467,12 @@ html.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4
    short "Delivery DATE" line), sustainability badges and their leaf, "90-day low" labels, and
    crossed-out List/Typical/Was prices. */
 .dsa-trim { display: none !important; }
-.dsa-delivery { margin: 2px 0; font-size: 13px; line-height: 1.35; color: inherit; }
+.dsa-delivery { margin: 1px 0; font-size: 12px; line-height: 1.3; color: inherit; }
+/* The Prime line: the Prime arrow (about 30px) instead of "Prime:", kept to one line. */
+.dsa-delivery-prime { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dsa-prime { display: inline-block; width: 30px; height: auto; margin: 0 4px 0 0; vertical-align: middle; }
+/* Non-Prime: the same arrow in dark red, slashed; a brighter red on Amazon's dark pages. */
+.dsa-dark .dsa-noprime { filter: brightness(1.6); }
 /* Amazon's "Add to compare" button: in the photo's bottom-left corner, white with black lines. */
 .dsa-photo { position: relative !important; }
 .dsa-compare {
