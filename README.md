@@ -6,12 +6,15 @@
 
 [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K4R529MTQE)
 
+<img src="docs/readme1.png" align="right" width="48%" alt="AmazonPlus on a desktop Amazon search: the AmazonPlus box in the filter column and the results as tiles, each with a Trust pill">
+
 A userscript (and Firefox extension) for Amazon search results that adds an **AmazonPlus** toggle at the top of the left-hand filter column (or, on mobile, the top of the results page). Turning it on makes your search results page more user-friendly:
 
 - **Trust:** estimates a trust score for each item listing based only on what's visible from the page, re-orders the results to put the most trustworthy listings first, and adds a small Trust bug in each card's top-right corner — click it to see what signals added or removed points
 - **Tidier Results:** hides promo blocks and repeats of the same product
 - **Universal Tile View:** search results always show as a grid of cards, even on searches where Amazon would list them row by row, so more listings can be seen at a glance. This can be modified in `src/config.js`
-- **More Succinct Product Tiles:** reduces needlessly verbose wording and hides questionable "regular" prices and other miscellaneous irrelevancies
+- <img src="docs/readme2.png" align="right" width="48%" alt="AmazonPlus with Prime and eco on, results sorted by price per unit, with short delivery lines and sustainability badges shown"> **More Succinct Product Tiles:** reduces needlessly verbose wording and hides questionable "regular" prices and other miscellaneous irrelevancies
+- **Prime and eco buttons:** under the toggle, both off to start. **No Prime / Prime** shows each card's delivery and prices without or with Prime; **Hide / Show** (leaf) hides or shows sustainability badges
 - **New Sort options:** while the toggle is on, Amazon's own Sort by menu gets two extra entries:
   - **AmazonPlus: Trust** — most trusted first (a fresh search shows this by default)
   - **AmazonPlus: $/count** — cheapest per unit first

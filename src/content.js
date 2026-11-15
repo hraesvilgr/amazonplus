@@ -24,6 +24,8 @@
   const KEY_PRICES = "dsaOffPrices";          // off-Amazon price scans: query → { at, f: {m, p, u, at} | 0 }
   const KEY_PRICE_USAGE = "dsaUpcUsage";      // UPCitemdb free-plan use today: { used, limit, resetAt }
   const KEY_SCAN_FOLD = "dsaScanFold";        // true: the scan box is folded down to its title
+  const KEY_PRIME = "dsaPrime";               // true: you have Prime (cards show Prime delivery and prices)
+  const KEY_ECO = "dsaEco";                   // true: show sustainability badges on cards
   const KEY_SCAN_FOLD_VER = "dsaScanFoldVer"; // the version that fold choice was made in (new version: folded again)
   // This version: written in by the userscript build; the add-on reads it from its manifest.
   const VERSION = (() => {
@@ -367,7 +369,10 @@
   const TRIM = "dsa-trim";
   const txt = n => (n.textContent || "").replace(/\s+/g, " ").trim();
   const DELIVERY_LINE = /^(?:Join Prime to get |Or Non-members get |Or fastest delivery|Or Prime members get |FREE delivery|\$[\d.,]+ delivery|Delivery\b|Arrives\b)/i;
-  const SUSTAIN = /^(?:Carbon impact|Recycled materials|Climate Pledge Friendly|Sustainability features?|\d+ sustainability features?|Compact by design|Reduced carbon)/i;
+  // Amazon's sustainability badges ("Forestry practices ⌄", "Recycled materials +2 more ⌄", …).
+  const SUSTAIN = /^(?:Carbon impact|Recycled materials|Forestry practices|Safer chemicals|Organic content|Climate Pledge Friendly|Sustainability features?|\d+ sustainability features?|Compact by design|Reduced carbon|Water (?:conservation|efficiency)|Energy efficiency|Responsible packaging|Reduced packaging|Pre-owned certified|Remanufactured|Sustainable materials?|Fair trade|Social responsibility)\b/i;
+  // …and anything Amazon's own code labels as sustainability / Climate Pledge.
+  const SUSTAIN_SEL = '[class*="sustainab" i], [class*="climate-pledge" i], [class*="cpf-" i], [data-csa-c-content-id*="sustainab" i], [data-csa-c-content-id*="climate" i], [aria-label*="sustainab" i]';
   const LOW_PRICE = /^(?:\d+-day low(?: price)?|Lowest price in \d+ days)$/i;
   // "1K+ bought in past month", "Top reviewed for durability": popularity labels, not about the product.
   const POPULARITY = /^(?:[\d.,]+[KkMm]?\+? bought in (?:the )?past (?:month|week)|[\d.,]+[KkMm]?\+? bought this (?:month|week)|Top reviewed for\b.*)$/i;
@@ -378,14 +383,20 @@
     while (n.parentElement && n.parentElement !== card && test(txt(n.parentElement))) n = n.parentElement;
     return n;
   }
-  function trimMatching(card, re, maxLen) {
+  function trimMatching(card, re, maxLen, cls) {
+    cls = cls || TRIM;
     for (const n of card.querySelectorAll("div, span, a, i")) {
-      if (n.classList.contains(TRIM) || n.closest("." + TRIM + ", .dsa-badge, .dsa-found, .dsa-delivery")) continue;
+      if (n.classList.contains(cls) || n.closest("." + TRIM + ", ." + cls + ", .dsa-badge, .dsa-found, .dsa-delivery")) continue;
       const t = txt(n);
       if (!t || t.length > maxLen || !re.test(t)) continue;
-      widen(n, card, p => p.length <= maxLen && re.test(p)).classList.add(TRIM);
+      widen(n, card, p => p.length <= maxLen && re.test(p)).classList.add(cls);
     }
   }
+  // Prices only Prime members get ("Join Prime to buy this item at $X", "Prime Member Price", …):
+  // shown only with the Prime button on.
+  // Not "Exclusive Prime price": there the card's main price is itself the Prime-only one, and the label
+  // is the only sign of it, so it always stays.
+  const PRIME_ONLY = /^(?:Join Prime to buy this item at\b|Prime Member (?:Price|price)\b|Lower price with Prime\b|With Prime\b).{0,60}$/i;
 
   // Amazon's delivery rows → our short lines:
   //   "Join Prime to get FREE delivery Tomorrow, Nov 16"             → Prime: Free Delivery Tomorrow, Nov 16
@@ -457,7 +468,12 @@
       const label = p.previousElementSibling;
       if (label && STRUCK_LABEL.test(txt(label))) label.classList.add(TRIM);
     }
-    trimMatching(card, SUSTAIN, 60);
+    trimMatching(card, SUSTAIN, 60, "dsa-eco");          // hidden unless the eco button is on
+    for (const n of card.querySelectorAll(SUSTAIN_SEL)) {
+      if (n.closest(".dsa-eco, .dsa-badge, .dsa-delivery") || txt(n).length > 80) continue;
+      widen(n, card, p => p.length <= 80 && !/\$|add to cart|delivery/i.test(p)).classList.add("dsa-eco");
+    }
+    trimMatching(card, PRIME_ONLY, 90, "dsa-prime-only"); // hidden unless the Prime button is on
     trimMatching(card, LOW_PRICE, 30);
     trimMatching(card, POPULARITY, 60);
     moveCompare(card);
@@ -506,19 +522,20 @@
     photo.appendChild(found);
   }
 
-  // The Prime delivery line stays on one line: its text gets smaller (12px down to 10px) until it fits.
+  // A delivery line's text gets smaller (12px down to 10px) until it fits on one line. The Prime line
+  // always stays on one line; the others may wrap if even 10px is too wide.
   function fitLine(line) {
     if (!line.isConnected || !line.clientWidth) return;
+    const wrap = !line.classList.contains("dsa-delivery-prime");
+    line.style.whiteSpace = "nowrap";
     let size = 12;
     line.style.fontSize = size + "px";
     while (line.scrollWidth > line.clientWidth + 0.5 && size > 10) line.style.fontSize = (size -= 0.5) + "px";
+    line.style.whiteSpace = wrap && line.scrollWidth > line.clientWidth + 0.5 ? "normal" : "";
   }
-  // The Non-Prime line takes the same size as the card's Prime line.
+  // Whichever delivery lines show (the Prime button decides).
   function fitDelivery(card) {
-    const prime = card.querySelector(".dsa-delivery-prime");
-    if (!prime) return;
-    fitLine(prime);
-    card.querySelectorAll(".dsa-delivery-noprime").forEach(n => { n.style.fontSize = prime.style.fontSize; });
+    card.querySelectorAll(".dsa-delivery").forEach(fitLine);
   }
   window.addEventListener("resize", () => cards().forEach(fitDelivery), { passive: true });
 
@@ -533,6 +550,7 @@
     card.querySelectorAll(".dsa-photo").forEach(n => n.classList.remove("dsa-photo"));
     card.querySelectorAll(".dsa-delivery").forEach(n => n.remove());
     card.querySelectorAll("." + TRIM).forEach(n => n.classList.remove(TRIM));
+    card.querySelectorAll(".dsa-eco, .dsa-prime-only").forEach(n => n.classList.remove("dsa-eco", "dsa-prime-only"));
     card.querySelectorAll(".dsa-compare").forEach(n => n.classList.remove("dsa-compare"));
   }
 
@@ -846,6 +864,36 @@
     return r.bottom > 0 && r.top < (window.innerHeight || document.documentElement.clientHeight) && r.width > 0;
   }
 
+  // ---------- Prime / eco preferences ----------
+  // Prime off ("No Prime"): cards show the Non-Prime delivery line and hide Prime-only prices.
+  // Prime on: the Prime delivery line and Prime prices; the Non-Prime line is hidden.
+  // Eco off: sustainability badges hidden (with their leaf); on: shown. Classes on <html>; styles.css.
+  let hasPrime = false, showEco = false;
+  function setPrefs(prime, eco, save) {
+    hasPrime = !!prime; showEco = !!eco;
+    const root = document.documentElement;
+    root.classList.toggle("dsa-has-prime", hasPrime);
+    root.classList.toggle("dsa-eco-on", showEco);
+    if (save) { storeSet(KEY_PRIME, hasPrime); storeSet(KEY_ECO, showEco); }
+    const t = document.getElementById("dsa-toggle");
+    if (t) {
+      const pb = t.querySelector(".dsa-pref-prime"), eb = t.querySelector(".dsa-pref-eco");
+      if (pb) {
+        pb.setAttribute("aria-pressed", String(hasPrime));
+        const img = pb.querySelector("img"), want = (hasPrime ? globalThis.DSA_PRIME_ARROW : globalThis.DSA_NOPRIME_ARROW) || "";
+        if (img.getAttribute("src") !== want) img.setAttribute("src", want);
+        pb.querySelector(".dsa-pref-text").textContent = hasPrime ? "Prime" : "No Prime";
+        pb.title = hasPrime ? "Showing Prime delivery and prices — tap if you don't have Prime" : "Showing delivery and prices without Prime — tap if you have Prime";
+      }
+      if (eb) {
+        eb.setAttribute("aria-pressed", String(showEco));
+        eb.querySelector(".dsa-pref-text").textContent = showEco ? "Show" : "Hide";
+        eb.title = showEco ? "Showing sustainability badges — tap to hide them" : "Sustainability badges hidden — tap to show them";
+      }
+    }
+    requestAnimationFrame(() => cards().forEach(fitDelivery));
+  }
+
   let scanFold = false;
   function onScanBox(e) {
     e.preventDefault();
@@ -859,6 +907,27 @@
     scanPrices();
   }
 
+  // The scan box title stays on one line: in a narrow box its text gets smaller (11px down to 9px)
+  // until it fits.
+  function fitScanTitle() {
+    // Desktop: the scan box sits in the main column, beside the buttons and logo; if that column is
+    // too narrow for its title (Amazon's left column is narrow in smaller windows), it goes below
+    // both columns, full width, instead.
+    const t = document.getElementById("dsa-toggle");
+    const main = t && t.querySelector(".dsa-col-main"), body = t && t.querySelector(".dsa-body"), box = t && t.querySelector(".dsa-scanbox");
+    if (main && body && box && !t.classList.contains("dsa-inline") && main.clientWidth) {
+      const roomy = main.clientWidth >= 165;
+      if (roomy && box.parentElement !== main) main.appendChild(box);
+      else if (!roomy && box.parentElement === main) body.after(box);
+    }
+    const head = document.querySelector("#dsa-toggle .dsa-scan-head");
+    if (!head || !head.clientWidth) return;
+    let size = 11;
+    head.style.fontSize = size + "px";
+    while (head.scrollWidth > head.clientWidth + 0.5 && size > 9) head.style.fontSize = (size -= 0.5) + "px";
+  }
+  window.addEventListener("resize", fitScanTitle, { passive: true });
+
   function updateScanButton() {
     const btn = document.querySelector("#dsa-toggle .dsa-scan");
     const note = document.querySelector("#dsa-toggle .dsa-scan-note");
@@ -871,6 +940,7 @@
     const cap = PC.searchLimit || 20;
     const label = btn.querySelector(".dsa-scan-label") || btn;
     btn.classList.toggle("dsa-fold", scanFold);
+    requestAnimationFrame(fitScanTitle);
     const caret = btn.querySelector(".dsa-scan-caret");
     if (caret) { caret.textContent = scanFold ? "▸" : "▾"; caret.setAttribute("aria-expanded", scanFold ? "false" : "true"); }
     label.textContent = (scanOn ? "Tap to stop · " : "") + `${Math.min(u.used, cap)}/${cap} used today`;
@@ -1631,11 +1701,26 @@
       updateScanButton();
     });
     const wrap = el("div", { id: "dsa-toggle" },
+      // Desktop: the a+ logo in the top-right corner, no taller than the title line, the version under it.
+      el("img", { class: "dsa-side-logo", src: globalThis.DSA_LOGO || "", alt: "" }),
       VERSION ? el("span", { class: "dsa-version", "aria-hidden": "true" }, "v" + VERSION) : "",
       el("label", { class: "dsa-switch" },
         input,
         el("span", { class: "dsa-track" }, el("span", { class: "dsa-thumb" })),
         el("span", { class: "dsa-label" }, "AmazonPlus")),
+      // Below the switch: a left column (the Prime and eco buttons; on desktop the a+ logo at its
+      // bottom) beside the main column (status, Brands, the price scan). Phones: one column.
+      el("div", { class: "dsa-body" },
+        el("div", { class: "dsa-side" },
+          // Two preferences, both off to start: Prime (which delivery line and prices the cards show) and
+          // eco (sustainability badges shown or hidden). Off looks pressed in, on stands out.
+          el("div", { class: "dsa-prefs" },
+            el("button", { type: "button", class: "dsa-pref dsa-pref-prime", "aria-pressed": "false", on: { click: e => { e.preventDefault(); setPrefs(!hasPrime, showEco, true); } } },
+              el("img", { class: "dsa-pref-icon", alt: "" }), el("span", { class: "dsa-pref-text" })),
+            el("button", { type: "button", class: "dsa-pref dsa-pref-eco", "aria-pressed": "false", on: { click: e => { e.preventDefault(); setPrefs(hasPrime, !showEco, true); } } },
+              el("img", { class: "dsa-pref-icon", src: globalThis.DSA_LEAF || "", alt: "" }), el("span", { class: "dsa-pref-text" }))),
+          ),
+        el("div", { class: "dsa-col-main" },
       el("div", { class: "dsa-status" }, "Off"),
       el("div", { class: "dsa-legend", "aria-hidden": "true" }, el("span")),
       el("button", {
@@ -1657,7 +1742,7 @@
             el("img", { class: "dsa-radar", src: globalThis.DSA_RADAR_IDLE || "", alt: "" }),
             el("span", { class: "dsa-scan-label" }),
             el("span", { class: "dsa-scan-note" })),
-          flaskIcon())),
+          flaskIcon())))),
       // Phones: while the box floats it shrinks to this logo; a tap opens it again.
       el("button", { type: "button", class: "dsa-logo", "aria-label": "Open AmazonPlus" },
         el("img", { src: globalThis.DSA_LOGO || "", alt: "AmazonPlus",
@@ -1681,6 +1766,8 @@
       slot.parentElement.insertBefore(toggle, slot);
     }
     updateStatus(null);
+    setPrefs(hasPrime, showEco, false);
+    requestAnimationFrame(fitScanTitle);
     updateScanButton();
     floatToggle(toggle);
   }
@@ -1884,8 +1971,9 @@
   }
 
   migrateOldSettings().then(() => Promise.all([storeGet(KEY_ENABLED, false), storeGet(KEY_MEMORY, null),
-    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false), storeGet(KEY_SCAN_FOLD_VER, "")]))
-    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold, foldVer]) => {
+    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false), storeGet(KEY_SCAN_FOLD_VER, ""), storeGet(KEY_PRIME, false), storeGet(KEY_ECO, false)]))
+    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold, foldVer, prime, eco]) => {
+    hasPrime = prime === true; showEco = eco === true;
     // The scan box starts folded after each install or update; opening or folding it is then kept.
     scanFold = foldVer === VERSION ? fold === true : true;
     prices = priceCache && typeof priceCache === "object" ? priceCache : {};

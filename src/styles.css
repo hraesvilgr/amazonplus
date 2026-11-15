@@ -12,8 +12,52 @@
   font-family: "Amazon Ember", Arial, sans-serif;
   color: #0f1111;
 }
+/* The Prime and eco buttons, under the on/off switch, lined up with the status. Off: light grey,
+   pressed in; on: white, standing out a little. */
+/* Below the switch, desktop: a left column (Prime and eco buttons, stacked; the a+ logo at the
+   bottom, as wide as the switch) beside the main column. Phones (.dsa-inline): one column, the
+   buttons in a row lined up with the status (the logo there sits under the switch). */
+#dsa-toggle .dsa-body { display: flex; align-items: stretch; gap: 10px; margin-top: 8px; }
+#dsa-toggle .dsa-side { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+/* Desktop: a fixed width (fits "Showing eco"), so switching a button doesn't shift the main column. */
+#dsa-toggle:not(.dsa-inline) .dsa-side { width: 52px; }
+#dsa-toggle:not(.dsa-inline) .dsa-side .dsa-prefs { align-self: stretch; }
+.dsa-pref-text { white-space: nowrap; }
+.dsa-pref-eco { font-size: 9.5px; gap: 3px; }
+#dsa-toggle .dsa-col-main { flex: 1; min-width: 0; }
+#dsa-toggle:not(.dsa-inline) .dsa-col-main > .dsa-status,
+#dsa-toggle:not(.dsa-inline) .dsa-col-main > .dsa-legend,
+#dsa-toggle:not(.dsa-inline) .dsa-col-main > .dsa-manage,
+#dsa-toggle:not(.dsa-inline) .dsa-col-main > .dsa-scanbox { margin-left: 0; }
+#dsa-toggle:not(.dsa-inline) .dsa-col-main > .dsa-status { margin-top: 0; }
+#dsa-toggle:not(.dsa-inline) > .dsa-scanbox { margin-left: 0; }
+.dsa-prefs { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+#dsa-toggle .dsa-side-logo { position: absolute; top: 6px; right: 7px; display: block; width: auto; height: 18px; pointer-events: none; }
+#dsa-toggle.dsa-off .dsa-side-logo { filter: grayscale(1); }
+#dsa-toggle.dsa-inline .dsa-body { display: block; margin-top: 0; }
+#dsa-toggle.dsa-inline .dsa-prefs { flex-direction: row; flex-wrap: wrap; margin: 8px 0 2px 50px; }
+#dsa-toggle.dsa-inline .dsa-side-logo { display: none; }
+.dsa-pref {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 3px 3px; border: 1px solid #c4c9c9; border-radius: 7px;
+  background: #e3e6e6; color: #4d5151; font: 600 10.5px/1.2 "Amazon Ember", Arial, sans-serif; cursor: pointer;
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.22); transition: background 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+.dsa-pref[aria-pressed="true"] {
+  background: #ffffff; color: #0f1111; border-color: #b7bcbc;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 5px rgba(0, 0, 0, 0.12); transform: translateY(-1px);
+}
+.dsa-pref-prime { flex-direction: column; gap: 2px; font-size: 9px; }
+/* Same icon box for both arrows (the slashed one is drawn taller), so both states are the same height. */
+.dsa-pref-prime .dsa-pref-icon { display: block; width: 30px; height: 11px; object-fit: contain; }
+.dsa-pref-eco .dsa-pref-icon { display: block; width: 12px; height: 12px; }
+.dsa-pref-eco[aria-pressed="false"] .dsa-pref-icon { filter: grayscale(1) opacity(0.75); }
+.dsa-dark .dsa-pref { background: #2a2f2f; color: #c4c9c9; border-color: #4a5050; box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.6); }
+.dsa-dark .dsa-pref-prime[aria-pressed="false"] .dsa-pref-icon { filter: brightness(1.6); }
+.dsa-dark .dsa-pref[aria-pressed="true"] { background: #ffffff; color: #0f1111; border-color: #ffffff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.5); }
 /* The version, small and light grey, in the top-right corner. */
 #dsa-toggle .dsa-version { position: absolute; top: 4px; right: 8px; font-size: 10px; line-height: 1; color: #a3a8a8; pointer-events: none; }
+#dsa-toggle:not(.dsa-inline) .dsa-version { top: 26px; }
 .dsa-dark #dsa-toggle .dsa-version { color: #6f7575; }
 /* Phones: only as wide as what's in it (up to 360px). */
 #dsa-toggle.dsa-inline { width: -moz-fit-content; width: fit-content; max-width: min(360px, 100%); margin: 8px 0 12px; }
@@ -471,6 +515,11 @@ html.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4
 /* The Prime line: the Prime arrow (about 30px) instead of "Prime:", kept to one line. */
 .dsa-delivery-prime { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dsa-prime { display: inline-block; width: 30px; height: auto; margin: 0 4px 0 0; vertical-align: middle; }
+/* The Prime button decides which delivery line and prices show; the eco button, sustainability badges. */
+html:not(.dsa-has-prime) .dsa-delivery-prime,
+html:not(.dsa-has-prime) .dsa-prime-only,
+html.dsa-has-prime .dsa-delivery-noprime,
+html:not(.dsa-eco-on) .dsa-eco { display: none !important; }
 /* Non-Prime: the same arrow in dark red, slashed; a brighter red on Amazon's dark pages. */
 .dsa-dark .dsa-noprime { filter: brightness(1.6); }
 /* Amazon's "Add to compare" button: in the photo's bottom-left corner, white with black lines. */

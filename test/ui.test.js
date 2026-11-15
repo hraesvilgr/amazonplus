@@ -391,9 +391,9 @@ const products = require("./fixtures/products-2026-10-28.json");
   const scanBtn = async () => p.textContent("#dsa-toggle .dsa-scan-label");
   check("Price scan button carries a little flask marking it experimental (not part of its text)", await p.evaluate(() => {
     const w = document.querySelector("#dsa-toggle .dsa-scan .dsa-flask-wrap"); return !!w && w.title === "Experimental" && !!w.querySelector("svg circle.dsa-bub") && w.getBoundingClientRect().width > 8; }));
-  check("Version number, small and light grey, in the box's top-right corner", await p.evaluate(() => {
+  check("Version number, small and light grey, at the box's top right (under the logo on desktop)", await p.evaluate(() => {
     const t = document.getElementById("dsa-toggle"), v = t.querySelector(".dsa-version"), tr = t.getBoundingClientRect(), vr = v.getBoundingClientRect();
-    return /^v\d+\.\d+\.\d+$/.test(v.textContent) && tr.right - vr.right < 14 && vr.top - tr.top < 10 && parseFloat(getComputedStyle(v).fontSize) <= 10; }));
+    return /^v\d+\.\d+\.\d+$/.test(v.textContent) && tr.right - vr.right < 14 && vr.top - tr.top < 36 && parseFloat(getComputedStyle(v).fontSize) <= 10; }));
   check("Price scan box: grey radar on the left, flask in the top-right corner, progress note inside the box", await p.evaluate(() => {
     const b = document.querySelector("#dsa-toggle .dsa-scan"), br = b.getBoundingClientRect();
     const r = b.querySelector(".dsa-radar"), rr = r.getBoundingClientRect(), f = b.querySelector(".dsa-flask-wrap").getBoundingClientRect();
@@ -401,8 +401,8 @@ const products = require("./fixtures/products-2026-10-28.json");
       br.right - f.right < 8 && f.top - br.top < 8 && !!b.querySelector(".dsa-scan-note") && parseFloat(getComputedStyle(b.querySelector(".dsa-scan-label")).fontSize) <= 11; }));
   // The caret folds the box down to its title and flask; a tap on the folded box opens it (no scan)
   check("Scan box sits below the Brands line", await p.evaluate(() => {
-    const t = document.getElementById("dsa-toggle"), kids = [...t.children];
-    return kids.indexOf(t.querySelector(".dsa-scanbox")) > kids.indexOf(t.querySelector(".dsa-manage")) && kids.indexOf(t.querySelector(".dsa-scanbox")) > kids.indexOf(t.querySelector(".dsa-panel")); }));
+    const t = document.getElementById("dsa-toggle"), after = (a, b) => !!(t.querySelector(b).compareDocumentPosition(t.querySelector(a)) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return after(".dsa-scanbox", ".dsa-manage") && after(".dsa-scanbox", ".dsa-panel"); }));
   check("…its title is one line, '▾ Scan off-Amazon prices'; the radar and the rest start below it, text wrapping round the radar", await p.evaluate(() => {
     const b = document.querySelector("#dsa-toggle .dsa-scan"), br = b.getBoundingClientRect(), rr = b.querySelector(".dsa-radar").getBoundingClientRect();
     const h = b.querySelector(".dsa-scan-head"), hr = h.getBoundingClientRect(), title = b.querySelector(".dsa-scan-title");
@@ -669,6 +669,10 @@ const products = require("./fixtures/products-2026-10-28.json");
       '<div class="a-row udm-secondary-delivery-message">Or Non-members get FREE delivery <b>Fri, Nov 20</b> on $35 of items shipped by Amazon</div></div>' +
       '<div class="a-row"><i class="a-icon a-icon-leaf"></i> <a href="#">Carbon impact</a></div>' +
       '<div class="a-row"><span>Only 3 left in stock - order soon.</span></div>' +
+      '<div class="a-row"><span class="a-color-secondary">Join Prime to buy this item at $15.99</span></div>' +
+      '<div class="a-row"><span class="a-size-base a-color-secondary">Exclusive Prime price</span></div>' +
+      '<div class="a-row"><i class="a-icon a-icon-leaf"></i><span>Forestry practices</span> <i class="a-icon a-icon-arrow"></i></div>' +
+      '<div class="a-row s-sustainability-feature-row"><img alt="" src="data:,"><span>Pre-loved goods</span></div>' +
       '<div class="a-row a-size-base"><span class="a-size-base a-color-secondary">5K+ bought in past month</span></div>' +
       '<div class="a-row"><span class="a-badge"><span class="a-badge-text">Top reviewed for durability</span></span></div>');
     // Amazon's phone "Add to compare" button: a dark disc pinned to the card's bottom-left corner
@@ -692,22 +696,77 @@ const products = require("./fixtures/products-2026-10-28.json");
   });
   const td = await tidy();
   await p.waitForTimeout(100);
+  // The two buttons under the switch, both off to start: "No Prime" (slashed red arrow) and "Hide" (grey leaf)
+  const prefs = () => p.evaluate(() => {
+    const t = document.getElementById("dsa-toggle"), pb = t.querySelector(".dsa-pref-prime"), eb = t.querySelector(".dsa-pref-eco");
+    const sw = t.querySelector(".dsa-switch").getBoundingClientRect(), st = t.querySelector(".dsa-status").getBoundingClientRect();
+    const look = b => { const c = getComputedStyle(b); return { pressed: b.getAttribute("aria-pressed"), text: b.querySelector(".dsa-pref-text").textContent, h: Math.round(b.getBoundingClientRect().height),
+      bg: c.backgroundColor, color: c.color, inset: /inset/.test(c.boxShadow), icon: b.querySelector("img").getAttribute("src"), iconFilter: getComputedStyle(b.querySelector("img")).filter }; };
+    const pr = pb.getBoundingClientRect(), ir = pb.querySelector("img").getBoundingClientRect(), tr = pb.querySelector(".dsa-pref-text").getBoundingClientRect();
+    const er = eb.querySelector("img").getBoundingClientRect(), etr = eb.querySelector(".dsa-pref-text").getBoundingClientRect();
+    const lgEl = t.querySelector(".dsa-side-logo"), lg = lgEl.getBoundingClientRect(), tb = t.getBoundingClientRect();
+    const title = t.querySelector(".dsa-label").getBoundingClientRect(), ver = t.querySelector(".dsa-version").getBoundingClientRect();
+    lgEl.style.display = "none"; const hNoLogo = t.getBoundingClientRect().height; lgEl.style.display = "";
+    return { prime: look(pb), eco: look(eb), below: pr.top >= sw.bottom - 1 && pr.right <= st.left + 1 && eb.getBoundingClientRect().top >= pr.bottom - 1,
+      logo: { h: Math.round(lg.height), titleH: Math.round(title.height), right: Math.round(tb.right - lg.right), top: Math.round(lg.top - tb.top), versionBelow: ver.top >= lg.bottom - 1 && Math.abs(ver.right - lg.right) < 8,
+        sameHeight: Math.round(hNoLogo) === Math.round(tb.height), loaded: lgEl.complete && lgEl.naturalWidth > 0 },
+      side: Math.round(t.querySelector(".dsa-side").getBoundingClientRect().width), main: Math.round(t.querySelector(".dsa-col-main").getBoundingClientRect().width), primeTextUnder: tr.top >= ir.bottom - 1, ecoTextBeside: etr.left >= er.right - 1 && Math.abs((etr.top + etr.bottom) / 2 - (er.top + er.bottom) / 2) < 6,
+      noPrimeIcon: pb.querySelector("img").getAttribute("src") === window.DSA_NOPRIME_ARROW, primeIcon: pb.querySelector("img").getAttribute("src") === window.DSA_PRIME_ARROW };
+  });
+  const off = await prefs();
+  check("Desktop: the a+ logo in the top-right corner, no taller than the title line, the version under it, the box no taller for it",
+    off.logo.loaded && off.logo.h <= off.logo.titleH && off.logo.h >= 14 && off.logo.right <= 12 && off.logo.top <= 8 && off.logo.versionBelow && off.logo.sameHeight, JSON.stringify(off.logo));
+  check("…the button column is narrow (the Prime arrow keeps its size), leaving the most room to the right", off.side <= 56 && off.main > off.side * 2.5, JSON.stringify([off.side, off.main]));
+  check("Two buttons below the switch, in the left column (stacked, status to their right), both off: '[slashed red arrow] / No Prime' and '[grey leaf] Hide' — light grey, dark grey text, pressed in",
+    off.below && off.prime.pressed === "false" && off.prime.text === "No Prime" && off.noPrimeIcon && off.primeTextUnder && off.eco.pressed === "false" && off.eco.text === "Hide" &&
+    off.ecoTextBeside && /grayscale\(1\)/.test(off.eco.iconFilter) && off.prime.inset && off.eco.inset && off.prime.bg === "rgb(227, 230, 230)" && off.prime.color === "rgb(77, 81, 81)", JSON.stringify(off));
+  // No Prime: the Non-Prime delivery line only, no Prime-only prices
+  const lineState = () => p.evaluate(() => {
+    const a = document.querySelector('[data-test-tidy="a"]'), vis = e => !!e && !!e.getClientRects().length;
+    const np = a.querySelector(".dsa-delivery-noprime"), pr = a.querySelector(".dsa-delivery-prime"), img = np.querySelector("img.dsa-noprime");
+    const po = [...a.querySelectorAll(".dsa-prime-only")];
+    const excl = [...a.querySelectorAll("span")].find(n => n.textContent === "Exclusive Prime price");
+    const forestry = [...a.querySelectorAll("span")].find(n => n.textContent === "Forestry practices"), preloved = a.querySelector(".s-sustainability-feature-row");
+    return { np: vis(np), pr: vis(pr), primeOnly: po.length ? vis(po[0]) : "none-marked", exclusive: vis(excl), forestry: vis(forestry), preloved: vis(preloved), npText: np.textContent, npAlt: img && img.alt, npImgW: img && Math.round(img.getBoundingClientRect().width), npLoaded: !!img && img.naturalWidth > 0,
+      npFont: parseFloat(getComputedStyle(np).fontSize), eco: [...a.querySelectorAll(".dsa-eco")].some(vis), ecoMarked: a.querySelectorAll(".dsa-eco").length };
+  });
+  const noPrime = await lineState();
+  check("No Prime: cards show the slashed dark-red arrow + 'Free Delivery Fri, Nov 20 on $35+ orders' (smaller), no Prime line, no Prime-only price",
+    noPrime.np && !noPrime.pr && noPrime.primeOnly === false && noPrime.exclusive && noPrime.npText === "Free Delivery Fri, Nov 20 on $35+ orders" && noPrime.npAlt === "Non-Prime" && noPrime.npLoaded &&
+    noPrime.npImgW >= 28 && noPrime.npImgW <= 32 && noPrime.npFont <= 12 && !/Join Prime|Non-members get|\$35 of items|Non-Prime:|\$15\.99/.test(td.a), JSON.stringify(noPrime));
+  // Prime on: white, standing out, blue arrow; the Prime line and Prime prices instead
+  await p.click("#dsa-toggle .dsa-pref-prime"); await p.waitForTimeout(250);
+  const onP = await prefs();
+  check("…the Prime button is the same height in both states", onP.prime.h === off.prime.h, JSON.stringify([off.prime.h, onP.prime.h]));
+  check("…and switching a button doesn't change the width of the left column", await p.evaluate(async () => {
+    const side = () => Math.round(document.querySelector("#dsa-toggle .dsa-side").getBoundingClientRect().width);
+    const before = side(); document.querySelector("#dsa-toggle .dsa-pref-eco").click(); await new Promise(r => setTimeout(r, 100));
+    const after = side(); document.querySelector("#dsa-toggle .dsa-pref-eco").click(); await new Promise(r => setTimeout(r, 100));
+    const eco = document.querySelector("#dsa-toggle .dsa-pref-eco");
+    return before === after && eco.scrollWidth <= eco.clientWidth + 1; }));
+  check("Prime button on: white, black text, standing out, '[blue arrow] / Prime'",
+    onP.prime.pressed === "true" && onP.prime.text === "Prime" && onP.primeIcon && !onP.prime.inset && onP.prime.bg === "rgb(255, 255, 255)" && onP.prime.color === "rgb(15, 17, 17)", JSON.stringify(onP.prime));
+  const withPrime = await lineState();
   const primeLine = await p.evaluate(() => {
     const l = document.querySelector('[data-test-tidy="a"] .dsa-delivery-prime'), img = l && l.querySelector("img.dsa-prime");
     return l && { text: l.textContent, alt: img && img.alt, imgW: img && Math.round(img.getBoundingClientRect().width), loaded: !!img && img.naturalWidth > 0,
       oneLine: l.getBoundingClientRect().height < 20, fits: l.scrollWidth <= l.clientWidth + 1, font: parseFloat(getComputedStyle(l).fontSize) };
   });
-  check("Cards: the Prime line is the Prime arrow (~30px) + 'Free Delivery Tomorrow, Nov 16', smaller and on one line",
-    !!primeLine && primeLine.text === "Free Delivery Tomorrow, Nov 16" && primeLine.alt === "Prime" && primeLine.loaded && primeLine.imgW >= 28 && primeLine.imgW <= 32 && primeLine.oneLine && primeLine.fits && primeLine.font <= 12 && primeLine.font >= 10, JSON.stringify(primeLine));
-  const nonPrime = await p.evaluate(() => {
-    const l = document.querySelector('[data-test-tidy="a"] .dsa-delivery-noprime'), img = l && l.querySelector("img.dsa-noprime");
-    const pr = document.querySelector('[data-test-tidy="a"] .dsa-delivery-prime');
-    return l && { text: l.textContent, alt: img && img.alt, imgW: img && Math.round(img.getBoundingClientRect().width), loaded: !!img && img.naturalWidth > 0,
-      font: getComputedStyle(l).fontSize, primeFont: getComputedStyle(pr).fontSize, below: l.getBoundingClientRect().top >= pr.getBoundingClientRect().bottom - 1 };
-  });
-  check("…and below it the slashed dark-red arrow + 'Free Delivery Fri, Nov 20 on $35+ orders', at the Prime line's size",
-    !!nonPrime && nonPrime.text === "Free Delivery Fri, Nov 20 on $35+ orders" && nonPrime.alt === "Non-Prime" && nonPrime.loaded && nonPrime.imgW >= 28 && nonPrime.imgW <= 32 &&
-    nonPrime.font === nonPrime.primeFont && nonPrime.below && !/Join Prime|Non-members get|\$35 of items|Non-Prime:/.test(td.a), JSON.stringify(nonPrime));
+  check("…cards then show the Prime arrow + 'Free Delivery Tomorrow, Nov 16' on one line, the Prime-only price, and no Non-Prime line",
+    withPrime.pr && !withPrime.np && withPrime.primeOnly === true && withPrime.exclusive && !!primeLine && primeLine.text === "Free Delivery Tomorrow, Nov 16" && primeLine.alt === "Prime" && primeLine.loaded &&
+    primeLine.imgW >= 28 && primeLine.imgW <= 32 && primeLine.oneLine && primeLine.fits && primeLine.font <= 12 && primeLine.font >= 10, JSON.stringify([withPrime, primeLine]));
+  // Eco on: green leaf, "Show", sustainability badges back
+  check("Sustainability badges hidden while eco is off, 'Forestry practices' and ones found by Amazon's code too", !noPrime.eco && noPrime.ecoMarked >= 3 && !noPrime.forestry && !noPrime.preloved, JSON.stringify(noPrime));
+  await p.click("#dsa-toggle .dsa-pref-eco"); await p.waitForTimeout(250);
+  const onE = await prefs(), ecoState = await lineState();
+  check("Eco button on: white, standing out, green leaf, 'Show' — and the sustainability badges show",
+    onE.eco.pressed === "true" && onE.eco.text === "Show" && !/grayscale/.test(onE.eco.iconFilter) && !onE.eco.inset && onE.eco.bg === "rgb(255, 255, 255)" && ecoState.eco && ecoState.forestry && ecoState.preloved &&
+    /Carbon impact/.test(await p.evaluate(() => document.querySelector('[data-test-tidy="a"]').innerText)), JSON.stringify([onE.eco, ecoState]));
+  // Both remembered
+  await load("baguette tray", tidyInject); await p.waitForTimeout(500);
+  const prefsKept = await prefs();
+  check("…both settings are remembered on the next page", prefsKept.prime.pressed === "true" && prefsKept.eco.pressed === "true" && (await lineState()).pr, JSON.stringify([prefsKept.prime.pressed, prefsKept.eco.pressed]));
+  await p.click("#dsa-toggle .dsa-pref-prime"); await p.click("#dsa-toggle .dsa-pref-eco"); await p.waitForTimeout(250);
   check("…a delivery fee shows as the price ('$5.99 Delivery Nov 6 - 10')", /\$5\.99 Delivery Nov 6 - 10/.test(td.b) && !/\$5\.99 delivery/.test(td.b), td.b.slice(0, 300));
   check("…no sustainability badges, '90-day low', 'bought in past month', 'Top reviewed for' or crossed-out List/Typical prices; the real price and stock note stay",
     !/Carbon impact|Recycled materials|\+2 more|90-day low|bought in past month|Top reviewed for|List:|Typical:|\$89\.99|\$79\.99/.test(td.a + td.b) && td.price && /Only 3 left in stock/.test(td.a), td.a.slice(0, 400));
@@ -821,7 +880,7 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("…tapping the logo again closes it, the logo still in the same place", closedByLogo.mini && !closedByLogo.switchShown && closedByLogo.logoL === shrunk.logoL && closedByLogo.logoT === shrunk.logoT, JSON.stringify(closedByLogo));
   await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(300);
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);           // off
-  await p.mouse.click(200, 700); await p.waitForTimeout(300);                      // tap elsewhere
+  await p.evaluate(() => document.body.click()); await p.waitForTimeout(300);      // tap elsewhere (not on a link)
   const offMini = await phone();
   check("…a tap elsewhere shrinks it again, and with AmazonPlus off the logo is grey", offMini.mini && offMini.grey, JSON.stringify(offMini));
   await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(200);
