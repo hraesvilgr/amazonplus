@@ -1,7 +1,10 @@
 // End-to-end check of the userscript in headless Chromium, on a stand-in results page built
 // from the captured baguette-tray listings (same card structure as amazon.com's search page).
 // Tampermonkey's GM_getValue / GM_setValue are emulated on top of localStorage.
-// Run: node test/ui.test.js [screenshot-dir]
+// Run: node test/ui.test.js [screenshot-dir] [--only=section,section]
+// Sections: toggle sorts product media scan float tiles gm4 mobileproduct contrast page2 tidy
+// nested banner phone chips update off. --only runs just those, each from a fresh page with AmazonPlus on
+// (toggle and sorts start off; quick checks while working on one feature); the full run is what's done before a release.
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
@@ -12,8 +15,11 @@ const userscript = fs.readFileSync(path.join(root, "dist", "AmazonPlus.user.js")
 // The price scan is switched off in this build (config: priceCheck.enabled false) until it's fixed;
 // its tests still run, against a copy with it switched on.
 const scanOff = /priceCheck: \{[^}]*?enabled: false,/.test(userscript);
-const userscriptScan = userscript.replace(/(priceCheck: \{[^}]*?enabled: )false,/, "$1true,");
-const shotDir = process.argv[2];
+// Tests also shorten the 3 s pause between lookups, which only spares UPCitemdb's servers.
+const userscriptScan = userscript.replace(/(priceCheck: \{[^}]*?enabled: )false,/, "$1true,").replace(/delayMs: \d+/, "delayMs: 300");
+const args = process.argv.slice(2);
+const only = (args.find(a => a.startsWith("--only=")) || "").slice(7).split(",").filter(Boolean);
+const shotDir = args.find(a => !a.startsWith("--"));
 
 const { page, GM_SHIM, productPage } = require("./standin.js");
 const products = require("./fixtures/products-2026-10-28.json");
@@ -48,9 +54,30 @@ const products = require("./fixtures/products-2026-10-28.json");
     await p.waitForSelector("#dsa-toggle");
   }
 
+  // Section gate. In a full run every section runs in order, each carrying on from the last.
+  // With --only, a chosen section starts on a fresh desktop page with AmazonPlus switched on.
+  async function section(name, on = true) {
+    if (!only.length) return true;
+    if (!only.includes(name)) return false;
+    console.log(`--- ${name}`);
+    await p.setViewportSize({ width: 1400, height: 1000 });
+    await p.goto("https://www.amazon.com/s?k=baguette+tray");
+    await p.evaluate(on => { localStorage.clear(); if (on) localStorage.setItem("gm:dsaEnabled", "true"); }, on);
+    await load("baguette tray");
+    return true;
+  }
+
+  const product = async asin => {
+    await p.goto("https://www.amazon.com/Some-Product-Name/dp/" + asin);
+    await p.evaluate(GM_SHIM);
+    await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
+    await p.waitForSelector("#dsa-product");
+  };
+
   const results = [];
   const check = (name, ok, extra) => { results.push([name, !!ok]); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra ? "  — " + extra : ""}`); };
 
+  if (await section("toggle", false)) {
   // 1. Toggle appears in the sidebar, off by default
   await load("baguette tray");
   check("Toggle shows at top of left column", await p.$eval("#s-refinements > :first-child", e => e.id === "dsa-toggle" || (e.classList.contains("dsa-spot") && e.nextElementSibling.id === "dsa-toggle")));
@@ -140,6 +167,8 @@ const products = require("./fixtures/products-2026-10-28.json");
     !(await p.$(".dsa-paint")) && !(await p.$(".dsa-dupe")));
   check("Off says a reload brings the promos back", /reload to bring back the hidden promos/.test(await p.textContent("#dsa-toggle .dsa-status")));
 
+  }
+  if (await section("sorts", false)) {
   // 8. A sort the user picked (here: Avg. Customer Review) keeps Amazon's order but still colours cards
   await p.click("#dsa-toggle .dsa-switch");             // back on
   await p.goto("https://www.amazon.com/s?k=baguette+tray&s=review-rank");
@@ -231,16 +260,12 @@ const products = require("./fixtures/products-2026-10-28.json");
     (await status()) !== "Off");
   check("Nothing else written to amazon.com's own storage", (await p.evaluate(() => Object.keys(localStorage).filter(k => !k.startsWith("gm:")))).length === 0);
 
+  }
+  if (await section("product")) {
   // 12. Product pages: a better rating, compared with the search-results estimate
   await load("baguette tray");                                   // records the search-results estimates
   const pavBefore = await p.$eval('[data-asin="B0D2NG692S"]', e => +e.querySelector(".dsa-score").textContent.replace(/\D/g, ""));
   const cmBefore = await p.$eval('[data-asin="B003YKGQWO"]', e => +e.querySelector(".dsa-score").textContent.replace(/\D/g, ""));
-  const product = async asin => {
-    await p.goto("https://www.amazon.com/Some-Product-Name/dp/" + asin);
-    await p.evaluate(GM_SHIM);
-    await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
-    await p.waitForSelector("#dsa-product");
-  };
   await product("B0D2NG692S");
   const pav = await p.textContent("#dsa-product");
   check("Product page shows a AmazonPlus panel under the title", await p.$eval("#dsa-product", e => e.previousElementSibling && e.previousElementSibling.id === "titleSection"));
@@ -286,6 +311,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Checked listings are marked ✓ in the results", pavAfter.includes("✓") && cmAfter.includes("✓"), pavAfter + " | " + cmAfter);
   await p.click('[data-asin="B0D2NG692S"] .dsa-badge summary');
   check("…with the product-page check in the reasons", /Checked on its product page/.test(await p.textContent('[data-asin="B0D2NG692S"] .dsa-badge')));
+  }
+  if (await section("media")) {
   // Books, films, TV, music and games: no AmazonPlus at all
   const mediaLoad = async (n) => {
     await p.goto("https://www.amazon.com/s?k=baguette+tray&media=" + n);
@@ -323,6 +350,8 @@ const products = require("./fixtures/products-2026-10-28.json");
     await load("baguette tray", "window.GM_xmlhttpRequest = () => {};");     // requests possible: hidden only because it's off
     check("This build: price scan switched off, its button hidden", await p.evaluate(() => { const b = document.querySelector("#dsa-toggle .dsa-scanbox"); return !b || b.hidden || !b.getClientRects().length; }));
   }
+  }
+  if (await section("scan")) {
   // "Scan for off-Amazon prices" (UPCitemdb), only when the button is pressed
   const U_SHIM = `
     window.__gmReqs = [];
@@ -344,6 +373,7 @@ const products = require("./fixtures/products-2026-10-28.json");
     };
     let used = 0;
     window.GM_xmlhttpRequest = o => {
+      if (/raw\.githubusercontent/.test(o.url)) return { abort() {} }; // (the once-a-day new-version check: tested on its own)
       window.__gmReqs.push(o.url);
       const q = new URL(o.url).searchParams.get("s");
       used++;
@@ -370,9 +400,10 @@ const products = require("./fixtures/products-2026-10-28.json");
     await p.waitForSelector("#dsa-toggle");
     if (keepFold) return;
     // The scan box starts folded after an install or update: open it, as you would
-    await p.waitForTimeout(300);
+    await p.waitForSelector("#dsa-toggle .dsa-scan");
     await p.evaluate(() => { const b = document.querySelector("#dsa-toggle .dsa-scan"); if (b && b.classList.contains("dsa-fold")) b.querySelector(".dsa-scan-caret").click(); });
-    await p.waitForTimeout(600);
+    await p.waitForFunction(() => !document.querySelector("#dsa-toggle .dsa-scan").classList.contains("dsa-fold"));
+    await p.waitForTimeout(150);
   };
   // After an install or update the scan box starts folded; opened, it stays open; a new version folds it again
   const isFolded = () => p.evaluate(() => document.querySelector("#dsa-toggle .dsa-scan").classList.contains("dsa-fold"));
@@ -426,7 +457,7 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Price scan: a button in the AmazonPlus box, nothing looked up until it's pressed",
     (await scanBtn()) === "0/20 used today" && (await p.evaluate(() => window.__gmReqs.length)) === 0, await scanBtn());
   const scanIdle = () => p.waitForFunction(() => !/^Checking/.test(document.querySelector("#dsa-toggle .dsa-scan-note").textContent), null, { timeout: 30000 });
-  const scrollAll = async () => { for (let y = 0; y < 12000; y += 700) { await p.evaluate(y => window.scrollTo(0, y), y); await p.waitForTimeout(120); } };
+  const scrollAll = async () => { for (let y = 0; y < 12000; y += 700) { await p.evaluate(y => window.scrollTo(0, y), y); await p.waitForTimeout(60); } };
   // Only cards in view are checked: put the DCF787D1 card in view and the BDCI20C card far below
   await p.evaluate(() => {
     const cs = [...document.querySelectorAll('div[data-component-type="s-search-result"]')];
@@ -477,22 +508,26 @@ const products = require("./fixtures/products-2026-10-28.json");
   // The userscript manager never answers (seen for real: "Checking…" forever, count never moving,
   // e.g. Tampermonkey holding requests while it asks permission). Short time limit for the test.
   const quickScan = userscriptScan.replace(/requestTimeoutMs: \d+/, "requestTimeoutMs: 1200");
-  const hangShim = `window.__gmReqs = []; window.GM_xmlhttpRequest = o => { window.__gmReqs.push(o.url); return { abort() {} }; };`;
+  const hangShim = `window.__gmReqs = []; window.GM_xmlhttpRequest = o => { if (/raw\.githubusercontent/.test(o.url)) return { abort() {} }; window.__gmReqs.push(o.url); return { abort() {} }; };`;
   await scanPage(true, hangShim, quickScan);
   await p.click("#dsa-toggle .dsa-scan");
-  await p.waitForTimeout(1200 * 2 + 3000 + 1500);
+  await p.waitForFunction(() => /holding the requests/.test(document.querySelector("#dsa-toggle .dsa-scan-note").textContent), null, { timeout: 15000 });
+  await p.waitForTimeout(700);   // and no third try after it
   const hung = await p.evaluate(() => ({ reqs: window.__gmReqs.length, note: document.querySelector("#dsa-toggle .dsa-scan-note").textContent, btn: document.querySelector("#dsa-toggle .dsa-scan-label").textContent }));
   check("Manager never answers: after two tries the scan stops and says what to allow, instead of 'Checking…' forever",
     hung.reqs === 2 && /holding the requests/.test(hung.note) && /api\.upcitemdb\.com/.test(hung.note) && /^0\/20/.test(hung.btn), JSON.stringify(hung));
   // Greasemonkey 4 style: a promise that rejects, no callbacks
-  const rejectShim = `window.__gmReqs = []; window.GM_xmlhttpRequest = o => { window.__gmReqs.push(o.url); return Promise.reject(new Error("domain not permitted")); };`;
+  const rejectShim = `window.__gmReqs = []; window.GM_xmlhttpRequest = o => { if (/raw\.githubusercontent/.test(o.url)) return { abort() {} }; window.__gmReqs.push(o.url); return Promise.reject(new Error("domain not permitted")); };`;
   await scanPage(true, rejectShim, quickScan);
   await p.click("#dsa-toggle .dsa-scan");
-  await p.waitForTimeout(3000 + 1500);
+  await p.waitForFunction(() => /couldn't be reached/.test(document.querySelector("#dsa-toggle .dsa-scan-note").textContent), null, { timeout: 15000 });
+  await p.waitForTimeout(700);
   const rej = await p.evaluate(() => ({ reqs: window.__gmReqs.length, note: document.querySelector("#dsa-toggle .dsa-scan-note").textContent, btn: document.querySelector("#dsa-toggle .dsa-scan-label").textContent }));
   check("Request refused outright: the scan stops and says so (with the reason), nothing counted",
     rej.reqs === 2 && /couldn't be reached \(connection error: domain not permitted\)/.test(rej.note) && /0\/20/.test(rej.btn), JSON.stringify(rej));
   await p.evaluate(() => { localStorage.removeItem("gm:dsaOffPrices"); localStorage.removeItem("gm:dsaUpcUsage"); });
+  }
+  if (await section("float")) {
   await load("baguette tray");
   // The AmazonPlus box stays in view while you scroll, and goes back into the column at the top
   const boxAt = () => p.evaluate(() => { const t = document.getElementById("dsa-toggle"), r = t.getBoundingClientRect();
@@ -529,6 +564,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   });
   check("…and sits below Amazon's sticky search bar when it shows, back at the top when it goes", underBar.top >= 60 && underBar.top < 80 && underBar.after < 20, JSON.stringify(underBar));
   await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(300);
+  }
+  if (await section("tiles")) {
   // Tile view: whatever layout Amazon picked (here: its row-by-row list, with a picture column that
   // insists on a 498px minimum width), results show as a grid of cards
   // Amazon's list markup: photo column (status label above photos of different heights), text column
@@ -564,6 +601,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
   check("…and AmazonPlus off gives Amazon's own layout back", !(await p.evaluate(() => document.documentElement.classList.contains("dsa-tiles"))));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  }
+  if (await section("gm4")) {
   // Greasemonkey 4: only the async GM.* API, which stores strings/numbers/booleans
   const GM4_SHIM = `
     window.__gm4 = window.__gm4 || {};
@@ -581,6 +620,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Greasemonkey 4: works with GM.getValue/GM.setValue, objects stored as text, nothing in amazon.com's storage",
     gm4.on === true && gm4.mem === "string" && gm4.site === 0, JSON.stringify(gm4));
   await p.evaluate(o => { for (const [k, v] of Object.entries(o)) localStorage.setItem(k, v); }, saved);
+  }
+  if (await section("mobileproduct")) {
   await load("baguette tray");
   // Amazon's mobile site: title in <span id="title">, rating in one link, seller under "mobile-merchant-info"
   products.B0MOBILE01 = Object.assign({}, products.B003YKGQWO, { asin: "B0MOBILE01", soldBy: "Amazon.com" });
@@ -595,6 +636,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.waitForSelector("#dsa-product", { timeout: 5000 }).catch(() => {});
   const mob = await p.evaluate(() => { const d = document.querySelector("#dsa-product .dsa-ph-details"); if (d) d.open = true; return d ? d.textContent : null; });
   check("Mobile product page: panel shows, reading the mobile title, rating and seller", mob && /Sold by Amazon\.com/.test(mob) && /Exact review count: 4,101/.test(mob), (mob || "no panel").slice(0, 200));
+  }
+  if (await section("contrast")) {
   await load("baguette tray");
   // Contrast: every text the script draws is at least 4.5:1, on Amazon's light pages and in dark mode
   const contrastAudit = () => p.evaluate(() => {
@@ -622,6 +665,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   const darkLow = Object.entries(darkAudit.out).filter(([, v]) => +v < 4.5);
   check("Amazon dark mode: detected, and all script text at least 4.5:1 (Amazon's light text on tinted cards too)", darkAudit.dark && !darkLow.length && Object.keys(darkAudit.out).length >= 5, JSON.stringify(darkAudit));
   if (shotDir) await p.screenshot({ path: path.join(shotDir, "9-dark.png"), clip: { x: 0, y: 0, width: 1100, height: 700 } });
+  }
+  if (await section("page2")) {
   await load("baguette tray");
   // Going to page 2: Amazon swaps the results in place. Page 1 must not come back.
   for (const order of ["add-then-remove", "remove-then-add"]) {
@@ -636,11 +681,11 @@ const products = require("./fixtures/products-2026-10-28.json");
       const late = fresh.pop();   // Amazon adds the last result a little later, which makes the script run again
       // Page 2 comes with one promo block of its own
       const promo = document.createElement("div"); promo.innerHTML = '<img src="data:,"> Sponsored brand video'; fresh.unshift(promo);
-      if (order === "add-then-remove") { fresh.forEach(n => slot.appendChild(n)); await wait(1000); old.forEach(c => c.remove()); }
-      else { old.forEach(c => c.remove()); await wait(1000); fresh.forEach(n => slot.appendChild(n)); }
-      if (order === "remove-then-add") { await wait(1000); slot.appendChild(late); }
+      if (order === "add-then-remove") { fresh.forEach(n => slot.appendChild(n)); await wait(600); old.forEach(c => c.remove()); }
+      else { old.forEach(c => c.remove()); await wait(600); fresh.forEach(n => slot.appendChild(n)); }
+      if (order === "remove-then-add") { await wait(600); slot.appendChild(late); }
     }, order);
-    await p.waitForTimeout(1200);
+    await p.waitForTimeout(700);
     // Then something makes the script re-sort (here: trusting a brand from a badge)
     await p.click('div[data-page2] .dsa-badge > summary');
     await p.click('div[data-page2] .dsa-badge[open] .dsa-btn.dsa-trust');
@@ -651,6 +696,8 @@ const products = require("./fixtures/products-2026-10-28.json");
     const st2 = await p.textContent("#dsa-toggle .dsa-status");
     check(`…and the promo count is page 2's own, not added to page 1's`, /· 1 promo removed/.test(st2), st2);
   }
+  }
+  if (await section("tidy")) {
   // Tidier cards: one short delivery line; no sustainability badge, "90-day low" or crossed-out prices.
   // Markup as on Amazon (delivery rows, strike-through prices), put into the first visible cards.
   const tidyInject = `(() => {
@@ -784,6 +831,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("…and turning AmazonPlus off puts Amazon's wording back", /Join Prime to get FREE delivery/.test(untd.a) && /Carbon impact/.test(untd.a) && /List:/.test(untd.a) && !/on \$35\+ orders/.test(untd.a), untd.a.slice(0, 300));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
   check("…on again: tidied again", /Free Delivery Fri, Nov 20 on \$35\+ orders/.test((await tidy()).a));
+  }
+  if (await section("nested")) {
   // Results nested inside a result (seen for real: a listing squashed into thin stripes, a row of
   // 'T' pills): hidden size/colour variants inside a listing, and a group block showing products side by side
   const nestInject = `(() => {
@@ -810,6 +859,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Results inside a result: hidden variants stay hidden (no thin stripes), the listing stays a normal tile, no pills on nested results",
     nest.vTile && nest.vW < 320 && nest.vH < 900 && nest.variantsHidden && nest.nestedBadges === 0 && nest.outerBadges, JSON.stringify(nest));
   check("…and a block showing several products side by side keeps the full width", nest.gGroup && nest.gFull, JSON.stringify(nest));
+  }
+  if (await section("banner")) {
   // Signed-in shoppers get a banner first in the results whose Amazon style spans 20 grid columns
   // (seen for real: every tile squashed to 3px wide and 1,051px tall)
   await load("baguette tray", `(() => {
@@ -831,6 +882,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   });
   check("Signed-in banner that Amazon spans over 20 columns: tiles keep their normal width, the banner the full row",
     banner.minW > 150 && banner.maxH < 900 && banner.cols <= 8 && banner.bannerFull, JSON.stringify(banner));
+  }
+  if (await section("phone")) {
   // Phone layout (no filter column; the box sits above the results)
   await p.setViewportSize({ width: 390, height: 800 });
   await p.goto("https://www.amazon.com/s?k=baguette+tray");
@@ -898,12 +951,13 @@ const products = require("./fixtures/products-2026-10-28.json");
     const t = document.getElementById("dsa-toggle"), spot = t.previousElementSibling, out = [];
     const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     const startY = spot.getBoundingClientRect().top + scrollY + t.offsetHeight + 60;
-    for (let y = Math.round(startY); y >= 0; y -= 3) {
+    // 3px steps where the switch-over happens, bigger ones elsewhere
+    for (let y = Math.round(startY), pb = 0; y >= 0; y -= Math.abs(pb) < 60 ? 3 : 12) {
       window.scrollTo(0, y); await frame();
       const a = t.classList.contains("dsa-float"); await frame(); await frame();
       const b = t.classList.contains("dsa-float");
       const placeBottom = spot.getBoundingClientRect().top + (a ? spot.offsetHeight : t.offsetHeight + 20);
-      out.push({ y, a, b, placeBottom: Math.round(placeBottom) });
+      pb = placeBottom; out.push({ y, a, b, placeBottom: Math.round(placeBottom) });
     }
     return out;
   });
@@ -930,6 +984,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   });
   check("Phone: a left-column card's details pop-up stays on screen", pop.left >= 8 && pop.right <= pop.vw - 8, JSON.stringify(pop));
   await p.setViewportSize({ width: 1400, height: 1000 });
+  }
+  if (await section("chips")) {
   await load("baguette tray");
   // Phone site: sorting is a row of chips in the Filters sheet (no sort menu). Stand-in modelled on
   // a phone screenshot: links styled as chips, the selected one with an extra class, a ✕ to close.
@@ -944,18 +1000,18 @@ const products = require("./fixtures/products-2026-10-28.json");
     document.body.appendChild(sheet);
   });
   const chipState = () => p.evaluate(() => [...document.querySelectorAll("#fake-sheet .chips > *")].map(c => c.textContent.trim() + (c.classList.contains("chip-on") ? "*" : "")));
-  await openSheet(); await p.waitForTimeout(900);
+  await openSheet(); await p.waitForSelector("#fake-sheet [data-dsa-sort]"); await p.waitForTimeout(100);
   let chipsNow = await chipState();
   check("Phone Filters sheet: 'AmazonPlus: Trust' and '$/count' chips added to Sort by, Trust lit (it's the order on screen)",
     JSON.stringify(chipsNow) === JSON.stringify(["Featured", "Price: Low to High", "Price: High to Low", "Avg. Customer Review", "Newest Arrivals", "Best Sellers", "AmazonPlus: Trust*", "AmazonPlus: $/count"]), JSON.stringify(chipsNow));
   await p.click('#fake-sheet [data-dsa-sort="unit"]'); await p.waitForTimeout(400);
   const afterUnit = await p.evaluate(() => ({ closed: !document.getElementById("fake-sheet"),
     prices: [...document.querySelectorAll('.s-main-slot > [data-asin]:not(.dsa-dupe)')].filter(c => c.offsetParent).slice(0, 3).map(c => c.dataset.dsaUnit || "") }));
-  await openSheet(); await p.waitForTimeout(900);
+  await openSheet(); await p.waitForSelector("#fake-sheet [data-dsa-sort]"); await p.waitForTimeout(100);
   chipsNow = await chipState();
   check("…tapping '$/count' sorts by price per unit, closes the sheet, and lights that chip next time", afterUnit.closed && afterUnit.prices.map(x => parseFloat(x.slice(1))).every((v, i, a) => v > 0 && (i === 0 || v >= a[i - 1])) && chipsNow.includes("AmazonPlus: $/count*") && !chipsNow.includes("Featured*"), JSON.stringify([afterUnit, chipsNow]));
   await p.click('#fake-sheet a.chip >> text="Featured"'); await p.waitForTimeout(500);
-  await p.click('#fake-sheet button'); await openSheet(); await p.waitForTimeout(900);
+  await p.click('#fake-sheet button'); await openSheet(); await p.waitForSelector("#fake-sheet [data-dsa-sort]"); await p.waitForTimeout(100);
   chipsNow = await chipState();
   check("…tapping Amazon's 'Featured' goes back to Amazon's order, and its chip is lit again", chipsNow.includes("Featured*") && !chipsNow.some(c => /AmazonPlus.*\*/.test(c)), JSON.stringify(chipsNow));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
@@ -963,6 +1019,83 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("…and AmazonPlus off removes its chips", !chipsNow.some(c => /AmazonPlus/.test(c)) && chipsNow.includes("Featured*"), JSON.stringify(chipsNow));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
   await p.click('#fake-sheet [data-dsa-sort="trust"]'); await p.waitForTimeout(300);
+  }
+  if (await section("update")) {
+  // New version available: checked once a day (days start 4 am Pacific), at most every 24 hours, only
+  // while AmazonPlus is on; the notice stays across pages and days until its ✕ is tapped.
+  const ver = /@version\s+(\S+)/.exec(userscript)[1];
+  const ghShim = latest => `window.__ghReqs = window.__ghReqs || 0; window.GM_xmlhttpRequest = o => {
+    if (o.url === "https://raw.githubusercontent.com/hraesvilgr/amazonplus/main/manifest.json") { window.__ghReqs++;
+      sessionStorage.setItem("ghReqs", +(sessionStorage.getItem("ghReqs") || 0) + 1);
+      setTimeout(() => o.onload({ status: 200, responseHeaders: "", responseText: JSON.stringify({ version: ${JSON.stringify(latest)} }) }), 5); }
+    return { abort() {} }; };`;
+  const ghReqs = () => p.evaluate(() => +(sessionStorage.getItem("ghReqs") || 0));
+  const notice = () => p.evaluate(() => {
+    const t = document.getElementById("dsa-toggle"), u = t.querySelector(".dsa-update"), a = u.querySelector("a"), x = u.querySelector(".dsa-update-x");
+    const shown = !u.hidden && u.getBoundingClientRect().height > 0;
+    const tr = t.getBoundingClientRect(), ar = a.getBoundingClientRect(), cs = getComputedStyle(a);
+    return { shown, text: a.textContent, href: a.href, h: Math.round(tr.height), first: t.firstElementChild === u,
+      centred: Math.abs((ar.left + ar.right) / 2 - (tr.left + tr.right) / 2) < 12, color: cs.color, underline: /underline/.test(cs.textDecorationLine),
+      sup: !!x && x.parentElement.tagName === "SUP", x: x && x.textContent,
+      logoBelow: (() => { const l = t.querySelector(".dsa-side-logo").getBoundingClientRect(); return !shown || l.top >= u.getBoundingClientRect().bottom - 1; })() };
+  });
+  // Off: no check at all
+  await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await load("baguette tray", ghShim("99.0.0")); await p.waitForTimeout(300);
+  check("New-version check: none while AmazonPlus is off", (await ghReqs()) === 0 && !(await notice()).shown);
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  const n1 = await notice();
+  check("Switched on and rated: one check; a newer version shows 'New version available' at the very top",
+    (await ghReqs()) === 1 && n1.shown && n1.first && n1.text === "New version available" && n1.href === "https://github.com/hraesvilgr/amazonplus/raw/main/dist/AmazonPlus.user.js", JSON.stringify(n1));
+  check("…centred, underlined, dark red, with a superscript ✕; the logo moves down out of its way",
+    n1.centred && n1.underline && n1.color === "rgb(139, 0, 0)" && n1.sup && n1.x === "✕" && n1.logoBelow, JSON.stringify(n1));
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "update-desktop.png"), clip: await p.$eval("#dsa-toggle", e => { const r = e.getBoundingClientRect(); return { x: r.left - 6, y: r.top + scrollY - 6, width: r.width + 12, height: r.height + 12 }; }) });
+  await load("baguette tray", ghShim("99.0.0")); await p.waitForTimeout(300);
+  check("…stays on the next page, with no second check the same day", (await ghReqs()) === 1 && (await notice()).shown);
+  await p.click("#dsa-toggle .dsa-update-x"); await p.waitForTimeout(150);
+  const n2 = await notice();
+  check("Tapping ✕ removes the line and the box is its normal height again", !n2.shown && n1.h - n2.h >= 14 && n1.h - n2.h <= 18, JSON.stringify({ with: n1.h, without: n2.h }));
+  await load("baguette tray", ghShim("99.0.0")); await p.waitForTimeout(300);
+  check("…and it stays away after a reload", !(await notice()).shown && (await ghReqs()) === 1);
+  // A new day (after 4 am Pacific) but under 24 hours since the last check: still no check
+  await p.evaluate(() => { const u = JSON.parse(localStorage.getItem("gm:dsaUpdate")); u.day = "2000-01-01"; u.checkedAt = Date.now() - 20 * 36e5; localStorage.setItem("gm:dsaUpdate", JSON.stringify(u)); });
+  await load("baguette tray", ghShim("99.0.1")); await p.waitForTimeout(300);
+  check("A new day but under 24 hours since the last check: no check", (await ghReqs()) === 1 && !(await notice()).shown);
+  // 24 hours later but the same 4 am-to-4 am day (as recorded): no check
+  await p.evaluate(() => { const u = JSON.parse(localStorage.getItem("gm:dsaUpdate"));
+    u.day = new Date(Date.now() - 4 * 36e5).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }); u.checkedAt = Date.now() - 25 * 36e5; localStorage.setItem("gm:dsaUpdate", JSON.stringify(u)); });
+  await load("baguette tray", ghShim("99.0.1")); await p.waitForTimeout(300);
+  check("Over 24 hours but already checked this day: no check", (await ghReqs()) === 1);
+  // Next day, over 24 hours: checked again; an even newer version brings the notice back
+  await p.evaluate(() => { const u = JSON.parse(localStorage.getItem("gm:dsaUpdate")); u.day = "2000-01-01"; u.checkedAt = Date.now() - 25 * 36e5; localStorage.setItem("gm:dsaUpdate", JSON.stringify(u)); });
+  await load("baguette tray", ghShim("99.0.1")); await p.waitForTimeout(300);
+  check("Next day: checked again, and a version newer than the one dismissed shows the notice again", (await ghReqs()) === 2 && (await notice()).shown);
+  // GitHub has this same version: nothing shown
+  await p.evaluate(() => { localStorage.removeItem("gm:dsaUpdate"); });
+  await load("baguette tray", ghShim(ver)); await p.waitForTimeout(300);
+  const same = await notice();
+  check("Same version on GitHub: no notice, and the box the same height as with the notice put away", (await ghReqs()) === 3 && !same.shown && same.h === n2.h, JSON.stringify({ h: same.h, n2: n2.h }));
+  // Phones: the logo keeps its place on screen between the box and the shrunk logo, notice and all
+  await p.evaluate(() => { localStorage.removeItem("gm:dsaUpdate"); });
+  await p.setViewportSize({ width: 390, height: 800 });
+  await load("baguette tray", `document.getElementById("s-refinements").remove(); document.querySelector(".wrap").style.display = "block";` + ghShim("99.0.0"));
+  await p.waitForTimeout(300);
+  await p.evaluate(() => window.scrollTo(0, 900)); await p.waitForTimeout(400);
+  const ph = await p.evaluate(async () => {
+    const t = document.getElementById("dsa-toggle"), logo = () => t.querySelector(".dsa-logo").getBoundingClientRect();
+    const mini = t.classList.contains("dsa-mini"), a = logo();
+    t.querySelector(".dsa-logo").click(); await new Promise(r => setTimeout(r, 200));
+    const b = logo(), uOpen = !t.querySelector(".dsa-update").hidden && t.querySelector(".dsa-update").getBoundingClientRect().height > 0;
+    const sw = t.querySelector(".dsa-switch").getBoundingClientRect(), u = t.querySelector(".dsa-update").getBoundingClientRect();
+    t.querySelector(".dsa-logo").click(); window.scrollTo(0, 0); await new Promise(r => setTimeout(r, 300));
+    return { mini, same: Math.abs(a.top - b.top) < 1.5 && Math.abs(a.left - b.left) < 1.5, uOpen, aboveSwitch: u.bottom <= sw.top + 1 };
+  });
+  check("Phone: the notice sits above the switch; shrunk to the logo and opened again, the logo stays put", ph.mini && ph.same && ph.uOpen && ph.aboveSwitch, JSON.stringify(ph));
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "update-phone.png"), clip: { x: 0, y: 0, width: 390, height: 260 } });
+  await p.setViewportSize({ width: 1400, height: 1000 });
+  await p.evaluate(() => { localStorage.removeItem("gm:dsaUpdate"); sessionStorage.clear(); });
+  }
+  if (await section("off")) {
   // Turning AmazonPlus off also turns off product pages
   await p.click("#dsa-toggle .dsa-switch");
   await p.goto("https://www.amazon.com/dp/B0002D00H8");
@@ -971,6 +1104,7 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.waitForTimeout(400);
   check("AmazonPlus off: no product-page panel", !(await p.$("#dsa-product")));
 
+  }
   check("No script errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   process.exit(results.some(r => !r[1]) ? 1 : 0);

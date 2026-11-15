@@ -32,7 +32,7 @@
 #dsa-toggle:not(.dsa-inline) .dsa-col-main > .dsa-status { margin-top: 0; }
 #dsa-toggle:not(.dsa-inline) > .dsa-scanbox { margin-left: 0; }
 .dsa-prefs { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-#dsa-toggle .dsa-side-logo { position: absolute; top: 6px; right: 7px; display: block; width: auto; height: 18px; pointer-events: none; }
+#dsa-toggle .dsa-side-logo { position: absolute; top: calc(6px + var(--dsa-upd, 0px)); right: 7px; display: block; width: auto; height: 18px; pointer-events: none; }
 #dsa-toggle.dsa-off .dsa-side-logo { filter: grayscale(1); }
 #dsa-toggle.dsa-inline .dsa-body { display: block; margin-top: 0; }
 #dsa-toggle.dsa-inline .dsa-prefs { flex-direction: row; flex-wrap: wrap; margin: 8px 0 2px 50px; }
@@ -56,8 +56,18 @@
 .dsa-dark .dsa-pref-prime[aria-pressed="false"] .dsa-pref-icon { filter: brightness(1.6); }
 .dsa-dark .dsa-pref[aria-pressed="true"] { background: #ffffff; color: #0f1111; border-color: #ffffff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.5); }
 /* The version, small and light grey, in the top-right corner. */
-#dsa-toggle .dsa-version { position: absolute; top: 4px; right: 8px; font-size: 10px; line-height: 1; color: #a3a8a8; pointer-events: none; }
-#dsa-toggle:not(.dsa-inline) .dsa-version { top: 26px; }
+#dsa-toggle .dsa-version { position: absolute; top: calc(4px + var(--dsa-upd, 0px)); right: 8px; font-size: 10px; line-height: 1; color: #a3a8a8; pointer-events: none; }
+#dsa-toggle:not(.dsa-inline) .dsa-version { top: calc(26px + var(--dsa-upd, 0px)); }
+/* "New version available", at the very top: centred, underlined, dark red, a small ✕ after it.
+   Everything placed from the top (logo, version) moves down by its height while it shows. */
+#dsa-toggle.dsa-has-update { --dsa-upd: 16px; }
+#dsa-toggle .dsa-update { margin: -4px 0 4px; text-align: center; font: 600 11.5px/16px "Amazon Ember", Arial, sans-serif; white-space: nowrap; }
+#dsa-toggle .dsa-update[hidden] { display: none; }
+#dsa-toggle .dsa-update a { color: #8b0000; text-decoration: underline; }
+#dsa-toggle .dsa-update a:hover { color: #b00000; }
+#dsa-toggle .dsa-update sup { vertical-align: super; font-size: 9px; line-height: 0; }
+#dsa-toggle .dsa-update-x { margin: 0 0 0 2px; padding: 0 2px; border: 0; background: none; color: #8b0000; font: 700 9px/1 Arial, sans-serif; cursor: pointer; }
+.dsa-dark #dsa-toggle .dsa-update a, .dsa-dark #dsa-toggle .dsa-update-x { color: #ff8a80; }
 .dsa-dark #dsa-toggle .dsa-version { color: #6f7575; }
 /* Phones: only as wide as what's in it (up to 360px). */
 #dsa-toggle.dsa-inline { width: -moz-fit-content; width: fit-content; max-width: min(360px, 100%); margin: 8px 0 12px; }
@@ -80,13 +90,13 @@
    just that logo, left exactly where it is: everything else is hidden in place, so tapping the logo
    opens the box around it without the logo moving. */
 #dsa-toggle .dsa-logo { display: none; }
-#dsa-toggle.dsa-inline { min-height: 92px; }
+#dsa-toggle.dsa-inline { min-height: calc(92px + var(--dsa-upd, 0px)); }
 #dsa-toggle.dsa-inline:not(.dsa-float) { position: relative; }
 #dsa-toggle.dsa-inline .dsa-logo {
   display: block;
   position: absolute;
   left: 9px;
-  top: 35px;
+  top: calc(35px + var(--dsa-upd, 0px));
   padding: 0;
   margin: 0;
   border: 0;

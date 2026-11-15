@@ -36,6 +36,7 @@ const header = `// ==UserScript==
 // @grant        GM.setValue
 // @grant        GM.xmlHttpRequest
 // @connect      api.upcitemdb.com
+// @connect      raw.githubusercontent.com
 // @inject-into  content
 // @run-at       document-idle
 // @noframes

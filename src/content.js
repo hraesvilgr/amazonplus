@@ -33,6 +33,11 @@
     if (!/^__/.test(built)) return built;
     try { return chrome.runtime.getManifest().version; } catch (e) { return ""; }
   })();
+  // New-version notice (userscript only): once a day at most, the version number in the project's
+  // manifest on GitHub; if it's newer, a link to install it at the top of the box.
+  const KEY_UPDATE = "dsaUpdate";
+  const UPDATE_URL = "https://github.com/hraesvilgr/amazonplus/raw/main/dist/AmazonPlus.user.js";
+  const UPDATE_CHECK_URL = "https://raw.githubusercontent.com/hraesvilgr/amazonplus/main/manifest.json";
   const LISTINGS_MAX = 300;                   // most recently seen listings kept
   const CHECK_TTL = 30 * 864e5;               // product-page checks are reused for 30 days
   const KEY_MEMORY = "dsaMemory";
@@ -739,6 +744,52 @@
   let scanNote = "";
   const pqByQ = new Map();
 
+  // ---- New version available ----
+  // Checked the first time AmazonPlus rates a results page each day (days start at 4 am Pacific
+  // time), and never sooner than 24 hours after the last check. What it finds is kept, so the notice
+  // stays, page after page and day after day, until its ✕ is tapped (or the new version is installed).
+  let update = { checkedAt: 0, day: "", latest: "", dismissed: "" };
+  let updateChecking = false;
+  const versionParts = v => String(v || "").split(".").map(n => parseInt(n, 10) || 0);
+  function isNewer(a, b) {
+    const x = versionParts(a), y = versionParts(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+    return false;
+  }
+  const updateDay = now => new Date(now - 4 * 36e5).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  const updateWanted = () => !!(VERSION && update.latest && isNewer(update.latest, VERSION) && update.dismissed !== update.latest);
+  function renderUpdate() {
+    const t = document.getElementById("dsa-toggle");
+    const box = t && t.querySelector(".dsa-update");
+    if (!box) return;
+    const show = updateWanted();
+    box.hidden = !show;
+    t.classList.toggle("dsa-has-update", show);
+  }
+  function dismissUpdate(e) {
+    e.preventDefault(); e.stopPropagation();
+    update.dismissed = update.latest;
+    storeSet(KEY_UPDATE, update);
+    renderUpdate();
+  }
+  async function checkForUpdate() {
+    if (!canFetch || !VERSION || updateChecking) return;
+    const now = Date.now();
+    if (update.day === updateDay(now) || now - (update.checkedAt || 0) < 864e5) return;
+    updateChecking = true;
+    update.checkedAt = now; update.day = updateDay(now);
+    storeSet(KEY_UPDATE, update);                 // counts as today's check even if GitHub doesn't answer
+    try {
+      const res = await gmGet(UPDATE_CHECK_URL);
+      if (res.status === 200) {
+        const v = String((JSON.parse(res.text) || {}).version || "");
+        if (/^\d+(\.\d+)*$/.test(v)) { update.latest = v; storeSet(KEY_UPDATE, update); }
+      }
+    } catch (e) { /* not JSON: try again tomorrow */ }
+    updateChecking = false;
+    renderUpdate();
+  }
+
   function priceAvailable() { return !!(PC.enabled && canFetch && PRICECHECK); }
 
   // One request through the userscript manager. Always settles: an answer, an error, or — if the
@@ -1204,6 +1255,7 @@
       cards().forEach(tidyCard);
       cards().forEach(tileClass);
       updateStatus(results, mode, hidden);
+      checkForUpdate();
     } finally {
       applying = false;
       reopenAsin = null;
@@ -1701,6 +1753,10 @@
       updateScanButton();
     });
     const wrap = el("div", { id: "dsa-toggle" },
+      // At the very top, only when there's a newer version: a link to install it, and a ✕ to put it away.
+      el("div", { class: "dsa-update", hidden: "" },
+        el("a", { href: UPDATE_URL, target: "_blank", rel: "noopener" }, "New version available"),
+        el("sup", {}, el("button", { type: "button", class: "dsa-update-x", "aria-label": "Dismiss the new-version notice", on: { click: dismissUpdate } }, "✕"))),
       // Desktop: the a+ logo in the top-right corner, no taller than the title line, the version under it.
       el("img", { class: "dsa-side-logo", src: globalThis.DSA_LOGO || "", alt: "" }),
       VERSION ? el("span", { class: "dsa-version", "aria-hidden": "true" }, "v" + VERSION) : "",
@@ -1749,6 +1805,9 @@
           // If the page won't show embedded images, a text "a+" mark stands in.
           on: { error: e => e.target.replaceWith(el("span", { class: "dsa-logo-text" }, "a", el("b", {}, "+"))) } })));
     wrap.classList.toggle("dsa-off", !enabled);      // the logo shows in grey while AmazonPlus is off
+    const showUpdate = updateWanted();
+    wrap.querySelector(".dsa-update").hidden = !showUpdate;
+    wrap.classList.toggle("dsa-has-update", showUpdate);
     return wrap;
   }
 
@@ -1971,8 +2030,9 @@
   }
 
   migrateOldSettings().then(() => Promise.all([storeGet(KEY_ENABLED, false), storeGet(KEY_MEMORY, null),
-    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false), storeGet(KEY_SCAN_FOLD_VER, ""), storeGet(KEY_PRIME, false), storeGet(KEY_ECO, false)]))
-    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold, foldVer, prime, eco]) => {
+    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false), storeGet(KEY_SCAN_FOLD_VER, ""), storeGet(KEY_PRIME, false), storeGet(KEY_ECO, false), storeGet(KEY_UPDATE, null)]))
+    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold, foldVer, prime, eco, upd]) => {
+    if (upd && typeof upd === "object") update = Object.assign(update, upd);
     hasPrime = prime === true; showEco = eco === true;
     // The scan box starts folded after each install or update; opening or folding it is then kept.
     scanFold = foldVer === VERSION ? fold === true : true;

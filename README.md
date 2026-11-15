@@ -18,6 +18,7 @@ A userscript (and Firefox extension) for Amazon search results that adds an **Am
 - **New Sort options:** while the toggle is on, Amazon's own Sort by menu gets two extra entries:
   - **AmazonPlus: Trust** — most trusted first (a fresh search shows this by default)
   - **AmazonPlus: $/count** — cheapest per unit first
+- **New-version notice:** once a day, the userscript checks GitHub for a newer version; if there is one, a "New version available" link to install it appears at the top of the box until you install it or tap its ✕
 
 **Scan for off-Amazon prices:** this is experimental and limited in capacity so far. A box below Brands, titled "Scan off-Amazon prices", starts a scan of each listing on the search results page, as it comes into view, that has a manufacturer model number, and attempts to look them up in [UPCitemdb](https://www.upcitemdb.com)'s product database one at a time. If an identical item is sold elsewhere — the same model number with nothing else bundled, new, in stock, by a US store other than Amazon or eBay, at a price UPCitemdb has seen in the last 60 days — the cheapest appears in a blue box beside the Amazon price.
 
@@ -27,10 +28,10 @@ Toggling AmazonPlus off puts everything back the way Amazon served it, layout in
 
 ## Permissions and privacy
 
-- **Userscript:** runs only on Amazon search results pages (`https://www.amazon.com/s*`) and product pages (`/dp/…`, `/gp/product/…`), on www.amazon.com and amazon.com, not in frames. Not on cart, checkout, account or order pages. Grants: `GM_getValue` / `GM_setValue` (the script's private storage) and `GM_xmlhttpRequest` limited by `@connect` to `api.upcitemdb.com` (the off-Amazon price scan).
+- **Userscript:** runs only on Amazon search results pages (`https://www.amazon.com/s*`) and product pages (`/dp/…`, `/gp/product/…`), on www.amazon.com and amazon.com, not in frames. Not on cart, checkout, account or order pages. Grants: `GM_getValue` / `GM_setValue` (the script's private storage) and `GM_xmlhttpRequest` limited by `@connect` to `api.upcitemdb.com` (the off-Amazon price scan) and `raw.githubusercontent.com` (the new-version check).
 - **Add-on:** `storage`, and content scripts on the same search and product-page URLs only (no broader host access).
-- **What is sent, and where:** only while a scan you started is running: the brand and model number of each listing that has one and scrolls into view (e.g. "DEWALT DCF787D1"), sent to `api.upcitemdb.com`, one request per listing. No cookies, account or key are involved. Nothing else leaves your browser, and nothing is sent anywhere unless you press the button. Set `priceCheck.enabled: false` in `src/config.js` to remove the button. The add-on version doesn't have the price scan and makes no requests at all.
-- **Stored locally, in the script's private storage:** whether it's on, your Sort by choice, the search term where you last picked "Featured", the product ID of the search result you last clicked, your brand votes, learned brand data (product IDs, scores, review counts, and up to 20 search terms per brand, capped at 3,000 brands), and the price-scan results (store, price and link per model number, up to 500, for 72 hours) and today's UPCitemdb request count and the ratings of the 300 most recently seen listings — their search-results reasons, the search term they came from, and any product-page check. "Reset learning" under Brands clears the learned data; removing the script clears everything. Nothing is written to amazon.com's own storage (a v0.1 leftover there is migrated and deleted on first run).
+- **What is sent, and where:** once a day at most (the first results page AmazonPlus rates after 4 am Pacific, and never within 24 hours of the last check), a plain request for this project's `manifest.json` on `raw.githubusercontent.com`, to read the latest version number; nothing about you or your searches is in it. Otherwise only while a scan you started is running: the brand and model number of each listing that has one and scrolls into view (e.g. "DEWALT DCF787D1"), sent to `api.upcitemdb.com`, one request per listing. No cookies, account or key are involved. Nothing else leaves your browser. Set `priceCheck.enabled: false` in `src/config.js` to remove the button. The add-on version has neither the price scan nor the version check, and makes no requests at all.
+- **Stored locally, in the script's private storage:** whether it's on, your Sort by choice, the search term where you last picked "Featured", the product ID of the search result you last clicked, your brand votes, learned brand data (product IDs, scores, review counts, and up to 20 search terms per brand, capped at 3,000 brands), and the price-scan results (store, price and link per model number, up to 500, for 72 hours) today's UPCitemdb request count, when the version was last checked, the latest version found and whether you dismissed its notice, and the ratings of the 300 most recently seen listings — their search-results reasons, the search term they came from, and any product-page check. "Reset learning" under Brands clears the learned data; removing the script clears everything. Nothing is written to amazon.com's own storage (a v0.1 leftover there is migrated and deleted on first run).
 - Listing text is only ever inserted as plain text (no `innerHTML`/`eval`), so a listing title can't inject code.
 - **Updates:** installed from the link above, Tampermonkey/Violentmonkey check this repository for newer versions and update automatically when `@version` goes up. Installed by pasting the script in by hand, it never updates on its own.
 
@@ -126,12 +127,16 @@ src/content.js         toggle, scraping, colouring, sorting, restore, price scan
 src/styles.css         injected styles
 tools/train_bigrams.py rebuilds src/bigrams.js from local English text
 tools/build_userscript.js  builds dist/AmazonPlus.user.js (ASCII-only)
+tools/test.js          builds, then runs the tests
 test/                  captured "baguette tray" results page + hand ratings
 ```
 
 ## Tests
 
 ```
+node tools/test.js                 # build, then everything below (scoring and page tests side by side)
+node tools/test.js --only=phone    # build, then one page-test section (toggle sorts product media scan
+                                   #   float tiles gm4 mobileproduct contrast page2 tidy nested banner phone chips off)
 node test/score.test.js            # scoring vs. hand ratings
 node test/score.test.js --verbose  # every listing with its reasons
 node test/memory.test.js           # learning across several searches
