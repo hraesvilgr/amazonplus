@@ -9,6 +9,10 @@ const { chromium } = require("playwright");
 const root = path.join(__dirname, "..");
 const fixture = require("./fixtures/baguette-tray.json");
 const userscript = fs.readFileSync(path.join(root, "dist", "disenshittify-amazon.user.js"), "utf8");
+// The price scan is switched off in this build (config: priceCheck.enabled false) until it's fixed;
+// its tests still run, against a copy with it switched on.
+const scanOff = /priceCheck: \{[^}]*?enabled: false,/.test(userscript);
+const userscriptScan = userscript.replace(/(priceCheck: \{[^}]*?enabled: )false,/, "$1true,");
 const shotDir = process.argv[2];
 
 const { page, GM_SHIM, productPage } = require("./standin.js");
@@ -36,9 +40,10 @@ const products = require("./fixtures/products-2026-10-28.json");
     await p.waitForTimeout(100);
   }
 
-  async function load(q) {
+  async function load(q, extra) {
     await p.goto("https://www.amazon.com/s?k=" + encodeURIComponent(q));
     await p.evaluate(GM_SHIM);
+    if (extra) await p.evaluate(extra);
     await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
     await p.waitForSelector("#dsa-toggle");
   }
@@ -314,6 +319,10 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.waitForTimeout(800);
   check("Book product page: no panel", !(await p.$("#dsa-product")));
   await load("baguette tray");
+  if (scanOff) {
+    await load("baguette tray", "window.GM_xmlhttpRequest = () => {};");     // requests possible: hidden only because it's off
+    check("This build: price scan switched off, its button hidden", await p.evaluate(() => { const b = document.querySelector("#dsa-toggle .dsa-scanbox"); return !b || b.hidden || !b.getClientRects().length; }));
+  }
   // "Scan for off-Amazon prices" (UPCitemdb), only when the button is pressed
   const U_SHIM = `
     window.__gmReqs = [];
@@ -344,7 +353,7 @@ const products = require("./fixtures/products-2026-10-28.json");
             responseText: JSON.stringify(RESULTS[q] || { code: "OK", total: 0, items: [] }) };
       setTimeout(() => o.onload(r), 5);
     };`;
-  const scanPage = async (clear) => {
+  const scanPage = async (clear, shim, script) => {
     await p.goto("https://www.amazon.com/s?k=impact+drivers");
     if (clear) await p.evaluate(() => { localStorage.removeItem("gm:dsaOffPrices"); localStorage.removeItem("gm:dsaUpcUsage"); });
     await p.evaluate(() => {
@@ -356,17 +365,46 @@ const products = require("./fixtures/products-2026-10-28.json");
       set(cs[2], "CRAFTSMAN Bit Holder (CMHT68109)", "$12.99");
     });
     await p.evaluate(GM_SHIM);
-    await p.evaluate(U_SHIM);
-    await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
+    await p.evaluate(shim || U_SHIM);
+    await p.addScriptTag({ content: `(function(){${script || userscriptScan}\n})();` });
     await p.waitForSelector("#dsa-toggle");
     await p.waitForTimeout(600);
   };
   await scanPage(true);
-  const scanBtn = async () => p.textContent("#dsa-toggle .dsa-scan");
+  const scanBtn = async () => p.textContent("#dsa-toggle .dsa-scan-label");
   check("Price scan button carries a little flask marking it experimental (not part of its text)", await p.evaluate(() => {
     const w = document.querySelector("#dsa-toggle .dsa-scan .dsa-flask-wrap"); return !!w && w.title === "Experimental" && !!w.querySelector("svg circle.dsa-bub") && w.getBoundingClientRect().width > 8; }));
+  check("Price scan box: grey radar on the left, flask in the top-right corner, progress note inside the box", await p.evaluate(() => {
+    const b = document.querySelector("#dsa-toggle .dsa-scan"), br = b.getBoundingClientRect();
+    const r = b.querySelector(".dsa-radar"), rr = r.getBoundingClientRect(), f = b.querySelector(".dsa-flask-wrap").getBoundingClientRect();
+    return r.getAttribute("src") === window.DSA_RADAR_IDLE && r.complete && r.naturalWidth > 0 && rr.left - br.left < 10 && rr.width >= 28 && rr.width <= 36 &&
+      br.right - f.right < 8 && f.top - br.top < 8 && !!b.querySelector(".dsa-scan-note") && parseFloat(getComputedStyle(b.querySelector(".dsa-scan-label")).fontSize) <= 11; }));
+  // The caret folds the box down to its title and flask; a tap on the folded box opens it (no scan)
+  check("Scan box sits below the Brands line", await p.evaluate(() => {
+    const t = document.getElementById("dsa-toggle"), kids = [...t.children];
+    return kids.indexOf(t.querySelector(".dsa-scanbox")) > kids.indexOf(t.querySelector(".dsa-manage")) && kids.indexOf(t.querySelector(".dsa-scanbox")) > kids.indexOf(t.querySelector(".dsa-panel")); }));
+  check("…its title is one line, '▾ Scan off-Amazon prices'; the radar and the rest start below it, text wrapping round the radar", await p.evaluate(() => {
+    const b = document.querySelector("#dsa-toggle .dsa-scan"), br = b.getBoundingClientRect(), rr = b.querySelector(".dsa-radar").getBoundingClientRect();
+    const h = b.querySelector(".dsa-scan-head"), hr = h.getBoundingClientRect(), title = b.querySelector(".dsa-scan-title");
+    if (h.textContent !== "▾Scan off-Amazon prices" || title.getClientRects().length !== 1 || hr.height > 20 || rr.top < hr.bottom || h.scrollWidth > h.clientWidth) return false;
+    // The text's own lines (the elements are blocks, so their boxes start under the floated radar)
+    const lines = e => { const r = document.createRange(); r.selectNodeContents(e); return [...r.getClientRects()]; };
+    const l = lines(b.querySelector(".dsa-scan-label"));
+    // Long text (a progress note) runs on under the radar
+    const n = b.querySelector(".dsa-scan-note"); n.textContent = "Checking DCF787D1… (3 more in view) and a little more to make this wrap well under the radar image";
+    const nr = lines(n), under = nr.some(r => r.left < rr.right && r.top >= rr.bottom - 2); n.textContent = "";
+    return rr.left - br.left < 8 && l.length >= 1 && l[0].left > rr.right && l[0].top < rr.bottom && under; }));
+  await p.click("#dsa-toggle .dsa-scan-caret"); await p.waitForTimeout(150);
+  const folded = await p.evaluate(() => { const b = document.querySelector("#dsa-toggle .dsa-scan"), vis = s => !!b.querySelector(s).getClientRects().length;
+    return { title: b.querySelector(".dsa-scan-title").textContent, label: vis(".dsa-scan-label"), caret: b.querySelector(".dsa-scan-caret").textContent, radar: vis(".dsa-radar"), flask: vis(".dsa-flask-wrap"), h: Math.round(b.getBoundingClientRect().height), reqs: window.__gmReqs.length }; });
+  check("…and the scan box fits inside the AmazonPlus box", await p.evaluate(() => {
+    const b = document.querySelector("#dsa-toggle .dsa-scan").getBoundingClientRect(), box = document.querySelector("#dsa-toggle .dsa-scanbox").getBoundingClientRect();
+    return b.right <= box.right + 0.5 && b.left >= box.left - 0.5; }));
+  check("Caret folds the scan box to just its title and the flask", folded.title === "Scan off-Amazon prices" && !folded.label && folded.caret === "▸" && !folded.radar && folded.flask && folded.h < 30 && folded.reqs === 0, JSON.stringify(folded));
+  await p.click("#dsa-toggle .dsa-scan-title"); await p.waitForTimeout(150);
+  check("…tapping the folded box opens it again without starting a scan", (await scanBtn()) === "0/20 used today" && (await p.evaluate(() => window.__gmReqs.length)) === 0);
   check("Price scan: a button in the AmazonPlus box, nothing looked up until it's pressed",
-    (await scanBtn()) === "Scan for off-Amazon prices: 0/20 used so far today" && (await p.evaluate(() => window.__gmReqs.length)) === 0, await scanBtn());
+    (await scanBtn()) === "0/20 used today" && (await p.evaluate(() => window.__gmReqs.length)) === 0, await scanBtn());
   const scanIdle = () => p.waitForFunction(() => !/^Checking/.test(document.querySelector("#dsa-toggle .dsa-scan-note").textContent), null, { timeout: 30000 });
   const scrollAll = async () => { for (let y = 0; y < 12000; y += 700) { await p.evaluate(y => window.scrollTo(0, y), y); await p.waitForTimeout(120); } };
   // Only cards in view are checked: put the DCF787D1 card in view and the BDCI20C card far below
@@ -379,7 +417,8 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.waitForTimeout(800); await scanIdle();
   const firstReqs = await p.evaluate(() => window.__gmReqs.map(u => decodeURIComponent(u)));
   check("Scanning checks only the listings in view…", firstReqs.length === 1 && /DCF787D1/.test(firstReqs[0]), firstReqs.join(" | "));
-  check("…and the button turns into Stop while it follows your scrolling", /^Stop scanning for off-Amazon prices: 1\/20/.test(await scanBtn()), await scanBtn());
+  check("…the radar turns green and sweeps while scanning", await p.evaluate(() => document.querySelector("#dsa-toggle .dsa-radar").getAttribute("src") === window.DSA_RADAR_SCAN));
+  check("…and the button turns into Stop while it follows your scrolling", /^Tap to stop · 1\/20/.test(await scanBtn()), await scanBtn());
   await scrollAll(); await p.waitForTimeout(800); await scanIdle();
   const found = await p.evaluate(() => {
     const card = t => [...document.querySelectorAll('div[data-component-type="s-search-result"]')].find(c => c.dataset.testModel === t);
@@ -388,7 +427,7 @@ const products = require("./fixtures/products-2026-10-28.json");
     return { reqs: window.__gmReqs.map(u => decodeURIComponent(u)), text: box && box.textContent, main: links[0] && links[0].href, g: links[1] && links[1].href,
              gText: links[1] && links[1].textContent, bg: box && getComputedStyle(box).backgroundColor,
              bdci: !!card("BLACK+DECKER 20V MAX* POWERCONNECT 1/4 in. Cordless Impact Driver Kit (BDCI20C)").querySelector(".dsa-found"),
-             boxes: document.querySelectorAll(".dsa-found").length, btn: document.querySelector("#dsa-toggle .dsa-scan").textContent,
+             boxes: document.querySelectorAll(".dsa-found").length, btn: document.querySelector("#dsa-toggle .dsa-scan-label").textContent,
              note: document.querySelector("#dsa-toggle .dsa-scan-note").textContent };
   });
   check("Identical item found: cheapest new, in stock, US, recent, no bundles", found.text && found.text.startsWith("Found at McTools Supply for $150.00") &&
@@ -399,11 +438,11 @@ const products = require("./fixtures/products-2026-10-28.json");
   // hidden repeat placement, never in view, so never looked up
   check("Listings at any price with a model number are looked up (not hidden repeats)", found.reqs.length === 4 && ["DCF787D1", "BDCI20C", "BG282", "BG285"].every(m => found.reqs.some(u => u.includes(m))) &&
     !found.reqs.some(u => /CMHT68109/.test(u)), found.reqs.join(" | "));
-  check("…the rest as they scroll into view, counted from UPCitemdb's own headers", found.btn === "Stop scanning for off-Amazon prices: 4/20 used so far today" && /found 1 elsewhere, 3 not found/.test(found.note), found.btn + " / " + found.note);
+  check("…the rest as they scroll into view, counted from UPCitemdb's own headers", found.btn === "Tap to stop · 4/20 used today" && /found 1 elsewhere, 3 not found/.test(found.note), found.btn + " / " + found.note);
   // Results are kept: a reload shows the box without asking again, and the count carries over
   await scanPage(false);
   check("Results are kept: shown again after a reload with no new requests", (await p.evaluate(() => window.__gmReqs.length)) === 0 && !!(await p.$(".dsa-found")) &&
-    (await scanBtn()) === "Scan for off-Amazon prices: 4/20 used so far today");
+    (await scanBtn()) === "4/20 used today");
   await p.click("#dsa-toggle .dsa-scan");
   await scrollAll(); await p.waitForTimeout(600);
   check("…and scanning again doesn't spend requests on them", (await p.evaluate(() => window.__gmReqs.length)) === 0);
@@ -413,8 +452,26 @@ const products = require("./fixtures/products-2026-10-28.json");
   await p.evaluate(() => { window.__gmLimit = true; });
   await p.click("#dsa-toggle .dsa-scan");
   await scrollAll(); await p.waitForTimeout(800); await scanIdle();
-  const lim = await p.evaluate(() => ({ reqs: window.__gmReqs.length, note: document.querySelector("#dsa-toggle .dsa-scan-note").textContent, btn: document.querySelector("#dsa-toggle .dsa-scan").textContent }));
-  check("Daily limit: stops after the refused request and says when it resets", lim.reqs === 1 && /daily limit is used up \(resets in about 10 h\)/.test(lim.note) && /^Scan for off-Amazon prices: 20\/20/.test(lim.btn), JSON.stringify(lim));
+  const lim = await p.evaluate(() => ({ reqs: window.__gmReqs.length, note: document.querySelector("#dsa-toggle .dsa-scan-note").textContent, btn: document.querySelector("#dsa-toggle .dsa-scan-label").textContent }));
+  check("Daily limit: stops after the refused request and says when it resets", lim.reqs === 1 && /daily limit is used up \(resets in about 10 h\)/.test(lim.note) && /^20\/20/.test(lim.btn), JSON.stringify(lim));
+  // The userscript manager never answers (seen for real: "Checking…" forever, count never moving,
+  // e.g. Tampermonkey holding requests while it asks permission). Short time limit for the test.
+  const quickScan = userscriptScan.replace(/requestTimeoutMs: \d+/, "requestTimeoutMs: 1200");
+  const hangShim = `window.__gmReqs = []; window.GM_xmlhttpRequest = o => { window.__gmReqs.push(o.url); return { abort() {} }; };`;
+  await scanPage(true, hangShim, quickScan);
+  await p.click("#dsa-toggle .dsa-scan");
+  await p.waitForTimeout(1200 * 2 + 3000 + 1500);
+  const hung = await p.evaluate(() => ({ reqs: window.__gmReqs.length, note: document.querySelector("#dsa-toggle .dsa-scan-note").textContent, btn: document.querySelector("#dsa-toggle .dsa-scan-label").textContent }));
+  check("Manager never answers: after two tries the scan stops and says what to allow, instead of 'Checking…' forever",
+    hung.reqs === 2 && /holding the requests/.test(hung.note) && /api\.upcitemdb\.com/.test(hung.note) && /^0\/20/.test(hung.btn), JSON.stringify(hung));
+  // Greasemonkey 4 style: a promise that rejects, no callbacks
+  const rejectShim = `window.__gmReqs = []; window.GM_xmlhttpRequest = o => { window.__gmReqs.push(o.url); return Promise.reject(new Error("domain not permitted")); };`;
+  await scanPage(true, rejectShim, quickScan);
+  await p.click("#dsa-toggle .dsa-scan");
+  await p.waitForTimeout(3000 + 1500);
+  const rej = await p.evaluate(() => ({ reqs: window.__gmReqs.length, note: document.querySelector("#dsa-toggle .dsa-scan-note").textContent, btn: document.querySelector("#dsa-toggle .dsa-scan-label").textContent }));
+  check("Request refused outright: the scan stops and says so (with the reason), nothing counted",
+    rej.reqs === 2 && /couldn't be reached \(connection error: domain not permitted\)/.test(rej.note) && /0\/20/.test(rej.btn), JSON.stringify(rej));
   await p.evaluate(() => { localStorage.removeItem("gm:dsaOffPrices"); localStorage.removeItem("gm:dsaUpcUsage"); });
   await load("baguette tray");
   // The AmazonPlus box stays in view while you scroll, and goes back into the column at the top
@@ -434,7 +491,7 @@ const products = require("./fixtures/products-2026-10-28.json");
     t.style.marginBottom = "18px";
     const next = t.nextElementSibling, docTop = () => next.getBoundingClientRect().top + scrollY;
     const before = docTop();
-    window.scrollTo(0, t.getBoundingClientRect().bottom + scrollY + 5); await new Promise(r => setTimeout(r, 300));
+    window.scrollTo(0, t.getBoundingClientRect().bottom + scrollY + 18 + 12); await new Promise(r => setTimeout(r, 300));
     const res = { float: t.classList.contains("dsa-float"), before: Math.round(before), after: Math.round(docTop()) };
     t.style.marginBottom = ""; window.scrollTo(0, 0); await new Promise(r => setTimeout(r, 300));
     return res;
@@ -574,44 +631,163 @@ const products = require("./fixtures/products-2026-10-28.json");
     const st2 = await p.textContent("#dsa-toggle .dsa-status");
     check(`…and the promo count is page 2's own, not added to page 1's`, /· 1 promo removed/.test(st2), st2);
   }
-  // Phone layout (no filter column; the box sits above the results): scrolling down shrinks the
-  // floating box to the logo, as wide as the on/off switch; a tap opens it, in colour when on, grey when off
+  // Tidier cards: one short delivery line; no sustainability badge, "90-day low" or crossed-out prices.
+  // Markup as on Amazon (delivery rows, strike-through prices), put into the first visible cards.
+  const tidyInject = `(() => {
+    const cs = [...document.querySelectorAll('.s-main-slot > div[data-component-type="s-search-result"]')];
+    const a = cs.find(c => c.dataset.asin === "B0D2NG692S" && !c.querySelector(".puis-sponsored-label-text")) || cs[6];
+    const b = cs.find(c => c !== a && !c.querySelector(".puis-sponsored-label-text") && c.dataset.asin !== a.dataset.asin);
+    a.dataset.testTidy = "a"; b.dataset.testTidy = "b";
+    const frame = c => { const im = c.querySelector("img.s-image"); const w = document.createElement("div"); w.className = "s-product-image-container"; im.replaceWith(w); w.appendChild(im); };
+    frame(a);
+    const box = c => c.querySelector(".s-card-container") || c;
+    box(a).insertAdjacentHTML("beforeend",
+      '<div class="a-section"><span class="a-color-secondary">List: </span><span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">$89.99</span><span aria-hidden="true">$89.99</span></span></div>' +
+      '<div class="a-row"><span class="a-color-secondary">Typical: <span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">$79.99</span><span aria-hidden="true">$79.99</span></span></span></div>' +
+      '<div class="a-row"><span class="a-badge"><span class="a-badge-text">90-day low</span></span></div>' +
+      '<div class="a-section udm-delivery-block"><div class="a-row udm-primary-delivery-message"><a href="#">Join Prime</a> to get FREE delivery <b>Tomorrow, Nov 16</b></div>' +
+      '<div class="a-row udm-secondary-delivery-message">Or Non-members get FREE delivery <b>Fri, Nov 20</b> on $35 of items shipped by Amazon</div></div>' +
+      '<div class="a-row"><i class="a-icon a-icon-leaf"></i> <a href="#">Carbon impact</a></div>' +
+      '<div class="a-row"><span>Only 3 left in stock - order soon.</span></div>' +
+      '<div class="a-row a-size-base"><span class="a-size-base a-color-secondary">5K+ bought in past month</span></div>' +
+      '<div class="a-row"><span class="a-badge"><span class="a-badge-text">Top reviewed for durability</span></span></div>');
+    // Amazon's phone "Add to compare" button: a dark disc pinned to the card's bottom-left corner
+    a.style.position = "relative";
+    a.insertAdjacentHTML("beforeend", '<div class="puis-compare-container" style="position:absolute;left:4px;bottom:4px"><button aria-label="Add to compare" style="width:36px;height:36px;border-radius:50%;border:0;background:rgba(15,17,17,.85);color:#fff">⧉</button></div>');
+    box(b).insertAdjacentHTML("beforeend",
+      '<div class="a-section udm-delivery-block"><div class="a-row udm-primary-delivery-message">$5.99 delivery <b>Nov 6 - 10</b></div></div>' +
+      '<div class="a-row"><i class="a-icon a-icon-leaf"></i><span>Recycled materials</span> <span>+2 more</span></div>');
+  })();`;
+  // Amazon's phone "Add to compare" button: white lines on a dark circle pinned bottom-left
+  const compareInject = tidyInject + `(() => {
+    const cs = [...document.querySelectorAll('.s-main-slot > div[data-component-type="s-search-result"]')].filter(c => !c.dataset.testTidy);
+    const icon = '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M4 6h9v11H4zM7 3h9v11" fill="none" stroke="#fff" stroke-width="1.6"/></svg>';
+  })();`;
+  await load("baguette tray", compareInject);
+  await p.waitForTimeout(500);
+  const tidy = () => p.evaluate(() => {
+    const a = document.querySelector('[data-test-tidy="a"]'), b = document.querySelector('[data-test-tidy="b"]');
+    const seen = c => c.innerText.replace(/\s+/g, " ");
+    return { a: seen(a), b: seen(b), price: !!a.querySelector(".a-price:not([data-a-strike]) .a-offscreen") && a.querySelector(".a-price:not([data-a-strike])").getClientRects().length > 0 };
+  });
+  const td = await tidy();
+  check("Cards: the delivery wording becomes one line, the non-member date ('Delivery Fri, Nov 20')",
+    /Delivery Fri, Nov 20/.test(td.a) && !/Join Prime|Non-members|Tomorrow, Nov 16|\$35 of items/.test(td.a), td.a.slice(0, 400));
+  check("…a delivery fee is kept with it ('Delivery Nov 6 - 10 ($5.99)')", /Delivery Nov 6 - 10 \(\$5\.99\)/.test(td.b) && !/\$5\.99 delivery/.test(td.b), td.b.slice(0, 300));
+  check("…no sustainability badges, '90-day low', 'bought in past month', 'Top reviewed for' or crossed-out List/Typical prices; the real price and stock note stay",
+    !/Carbon impact|Recycled materials|\+2 more|90-day low|bought in past month|Top reviewed for|List:|Typical:|\$89\.99|\$79\.99/.test(td.a + td.b) && td.price && /Only 3 left in stock/.test(td.a), td.a.slice(0, 400));
+  const cmp = await p.evaluate(() => {
+    const a = document.querySelector('[data-test-tidy="a"]'), btn = a.querySelector('[aria-label="Add to compare"]'), photo = a.querySelector(".s-product-image-container");
+    const b = btn.getBoundingClientRect(), ph = photo.getBoundingClientRect();
+    return { inPhoto: photo.contains(btn), dl: Math.round(b.left - ph.left), db: Math.round(ph.bottom - b.bottom), aboveCardBottom: Math.round(a.getBoundingClientRect().bottom - b.bottom), filter: getComputedStyle(btn.closest(".dsa-compare") || btn).filter };
+  });
+  check("…the 'Add to compare' button moves to the photo's bottom-left corner, white with black lines", cmp.inPhoto && cmp.dl >= 0 && cmp.dl <= 10 && cmp.db >= 0 && cmp.db <= 10 && cmp.aboveCardBottom > 60 && /invert\(1\)/.test(cmp.filter), JSON.stringify(cmp));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  check("…and goes back where Amazon put it when AmazonPlus is off", await p.evaluate(() => {
+    const a = document.querySelector('[data-test-tidy="a"]'), btn = a.querySelector('[aria-label="Add to compare"]');
+    return !a.querySelector(".s-product-image-container").contains(btn) && !btn.closest(".dsa-compare") && btn.parentElement.parentElement === a; }));
+  const untd = await tidy();
+  check("…and turning AmazonPlus off puts Amazon's wording back", /Join Prime to get FREE delivery/.test(untd.a) && /Carbon impact/.test(untd.a) && /List:/.test(untd.a) && !/Delivery Fri, Nov 20/.test(untd.a), untd.a.slice(0, 300));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
+  check("…on again: tidied again", /Delivery Fri, Nov 20/.test((await tidy()).a));
+  // Phone layout (no filter column; the box sits above the results)
   await p.setViewportSize({ width: 390, height: 800 });
   await p.goto("https://www.amazon.com/s?k=baguette+tray");
   // Amazon's phone site: no filter column, and the results stack under the box
-  await p.evaluate(() => { document.getElementById("s-refinements").remove(); document.querySelector(".wrap").style.display = "block"; });
+  await p.evaluate(() => { document.getElementById("s-refinements").remove(); document.querySelector(".wrap").style.display = "block";
+    const all = [...document.querySelectorAll('.s-main-slot > div[data-component-type="s-search-result"]')];
+    const c = all.find((x, i) => i >= 4 && all.filter(y => y.dataset.asin === x.dataset.asin).length === 1);   // a listing shown once (repeats get hidden)
+    c.dataset.testCompare = "shape"; c.style.position = "relative";
+    { const im = c.querySelector("img.s-image"); const w = document.createElement("div"); w.className = "s-product-image-container"; im.replaceWith(w); w.appendChild(im); }
+    c.insertAdjacentHTML("beforeend", '<div class="x9" style="position:absolute;left:6px;bottom:6px;width:40px;height:40px;border-radius:20px;background:rgba(15,17,17,.85)"><i style="display:block;width:16px;height:16px;margin:12px;border:2px solid #fff"></i></div>'); });
   await p.evaluate(GM_SHIM);
   await p.addScriptTag({ content: `(function(){${userscript}\n})();` });
   await p.waitForSelector("#dsa-toggle");
   await p.waitForTimeout(600);
+  check("Phone: an unlabelled compare button (found by its shape and place) moves to the photo's bottom-left corner too", await p.evaluate(() => {
+    const c = document.querySelector('[data-test-compare="shape"]'), b = c.querySelector(".x9"), phEl = c.querySelector(".s-product-image-container"), ph = phEl.getBoundingClientRect(), r = b.getBoundingClientRect();
+    return b.classList.contains("dsa-compare") && phEl.contains(b) && c.getBoundingClientRect().bottom - r.bottom > 60 && r.left - ph.left <= 10 && ph.bottom - r.bottom <= 10 && /invert\(1\)/.test(getComputedStyle(b).filter); }));
   const phone = async () => p.evaluate(() => {
     const t = document.getElementById("dsa-toggle"), img = t.querySelector(".dsa-logo img"), r = t.getBoundingClientRect();
-    return { inline: t.classList.contains("dsa-inline"), float: t.classList.contains("dsa-float"), mini: t.classList.contains("dsa-mini"),
-      w: Math.round(r.width), h: Math.round(r.height), logoW: img ? Math.round(img.getBoundingClientRect().width) : null,
-      loaded: !!img && img.complete && img.naturalWidth > 0, track: Math.round(t.querySelector(".dsa-track").getBoundingClientRect().width),
-      grey: img ? /grayscale/.test(getComputedStyle(img).filter) : null, switchShown: !!t.querySelector(".dsa-switch").getClientRects().length };
+    const ir = img.getBoundingClientRect(), sw = t.querySelector(".dsa-track").getBoundingClientRect(), st = t.querySelector(".dsa-status");
+    const vis = e => getComputedStyle(e).visibility === "visible" && !!e.getClientRects().length;
+    return { float: t.classList.contains("dsa-float"), mini: t.classList.contains("dsa-mini"), boxL: Math.round(r.left), boxT: Math.round(r.top), w: Math.round(r.width),
+      logoL: Math.round(ir.left * 2) / 2, logoT: Math.round(ir.top * 2) / 2, logoW: Math.round(ir.width), loaded: img.complete && img.naturalWidth > 0,
+      track: Math.round(sw.width), logoUnderSwitch: ir.top > sw.bottom && ir.left < sw.right && ir.right > sw.left,
+      grey: /grayscale/.test(getComputedStyle(img).filter), switchShown: vis(t.querySelector(".dsa-switch")), boxShown: getComputedStyle(t).borderTopColor !== "rgba(0, 0, 0, 0)",
+      status: st.textContent, oneLine: st.scrollWidth <= st.clientWidth + 1 && st.getBoundingClientRect().height < 20, legend: vis(t.querySelector(".dsa-legend")) };
   });
   const docked = await phone();
+  check("Phone: the logo sits in the box under the on/off switch, as wide as it (plus its outline)",
+    !docked.float && docked.loaded && docked.logoUnderSwitch && docked.logoW >= docked.track + 4 && docked.logoW <= docked.track + 6, JSON.stringify(docked));
+  check("…the box is smaller: no colour scale, and a one-line status without the media and promo notes",
+    !docked.legend && docked.oneLine && /^\d+ rated · \d+ trusted · \d+ junk$/.test(docked.status), JSON.stringify(docked));
   await p.evaluate(() => window.scrollTo(0, 900)); await p.waitForTimeout(400);
   const shrunk = await phone();
-  check("Phone: scrolled down, the box shrinks to the logo, as wide as the on/off switch, in colour",
-    docked.inline && !docked.mini && shrunk.float && shrunk.mini && shrunk.loaded && shrunk.logoW === docked.track && !shrunk.switchShown && shrunk.w < 60 && !shrunk.grey,
-    JSON.stringify({ docked, shrunk }));
+  check("…scrolled down, only the logo shows (in colour), the box 8px from the left edge as from the top",
+    shrunk.float && shrunk.mini && !shrunk.switchShown && !shrunk.boxShown && shrunk.boxL === 8 && shrunk.boxT === 8 && !shrunk.grey, JSON.stringify(shrunk));
+  check("…and the page under the hidden box still takes taps", await p.evaluate(() => {
+    const t = document.getElementById("dsa-toggle"), r = t.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.right - 20, r.top + 20); return !!hit && !t.contains(hit); }));
   await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(300);
   const opened = await phone();
-  check("…a tap on the logo opens the full box", opened.float && !opened.mini && opened.switchShown && opened.w > 300, JSON.stringify(opened));
+  check("…a tap on the logo opens the full box around it, the logo staying exactly where it was",
+    opened.float && !opened.mini && opened.switchShown && opened.boxShown && opened.logoL === shrunk.logoL && opened.logoT === shrunk.logoT, JSON.stringify([shrunk, opened]));
+  check("…and the box is only as wide as its contents", opened.w < 300 && docked.w < 300 && opened.w === docked.w, JSON.stringify([docked.w, opened.w]));
+  await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(300);
+  const closedByLogo = await phone();
+  check("…tapping the logo again closes it, the logo still in the same place", closedByLogo.mini && !closedByLogo.switchShown && closedByLogo.logoL === shrunk.logoL && closedByLogo.logoT === shrunk.logoT, JSON.stringify(closedByLogo));
+  await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(300);
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);           // off
   await p.mouse.click(200, 700); await p.waitForTimeout(300);                      // tap elsewhere
   const offMini = await phone();
   check("…a tap elsewhere shrinks it again, and with AmazonPlus off the logo is grey", offMini.mini && offMini.grey, JSON.stringify(offMini));
   await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(200);
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);           // back on
-  await p.evaluate(() => window.scrollBy(0, 400)); await p.waitForTimeout(400);
+  await p.evaluate(() => window.scrollTo(0, 1400)); await p.waitForTimeout(400);
+  const stillOpen = await phone();
+  check("…once you've reopened it, it stays open while you scroll (logo back in colour)", stillOpen.float && !stillOpen.mini && stillOpen.switchShown && !stillOpen.grey, JSON.stringify(stillOpen));
+  await p.click("#dsa-toggle .dsa-logo"); await p.waitForTimeout(300);              // closed again by the user
+  await p.evaluate(() => window.scrollTo(0, 1800)); await p.waitForTimeout(400);
   const reshrunk = await phone();
-  check("…scrolling on shrinks it too, back in colour once AmazonPlus is on", reshrunk.mini && !reshrunk.grey, JSON.stringify(reshrunk));
+  check("…until you close it: then it's the logo again as you scroll", reshrunk.mini && !reshrunk.grey, JSON.stringify(reshrunk));
+  // Scrolling back up a few pixels at a time through where the box sits: never the two at once,
+  // no flickering, and the box itself wins as soon as any of its place is back in view
+  const steps = await p.evaluate(async () => {
+    const t = document.getElementById("dsa-toggle"), spot = t.previousElementSibling, out = [];
+    const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const startY = spot.getBoundingClientRect().top + scrollY + t.offsetHeight + 60;
+    for (let y = Math.round(startY); y >= 0; y -= 3) {
+      window.scrollTo(0, y); await frame();
+      const a = t.classList.contains("dsa-float"); await frame(); await frame();
+      const b = t.classList.contains("dsa-float");
+      const placeBottom = spot.getBoundingClientRect().top + (a ? spot.offsetHeight : t.offsetHeight + 20);
+      out.push({ y, a, b, placeBottom: Math.round(placeBottom) });
+    }
+    return out;
+  });
+  const flips = steps.filter(s => s.a !== s.b);
+  const late = steps.filter(s => s.b && s.placeBottom > 0);
+  let changes = 0; for (let i = 1; i < steps.length; i++) if (steps[i].b !== steps[i - 1].b) changes++;
+  check("…scrolling back up: no flicker between the logo and the box; the box takes over once its place shows",
+    flips.length === 0 && late.length === 0 && changes === 1 && !steps[steps.length - 1].b, JSON.stringify({ flips: flips.slice(0, 3), late: late.slice(0, 3), changes }));
   await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(400);
   const atTop = await phone();
   check("…and at the top of the page it's the full box in its place again", !atTop.float && !atTop.mini && atTop.switchShown, JSON.stringify(atTop));
+  // A narrower phone: the status still fits on one line (smaller text)
+  await p.setViewportSize({ width: 320, height: 700 }); await p.waitForTimeout(400);
+  const narrowSt = await phone();
+  check("…on a narrower phone the status still fits on one line", narrowSt.oneLine, JSON.stringify(narrowSt));
+  await p.setViewportSize({ width: 390, height: 800 }); await p.waitForTimeout(300);
+  // The details pop-up of a card in the left column stays on screen
+  const pop = await p.evaluate(async () => {
+    const left = [...document.querySelectorAll(".s-main-slot > [data-asin]")].find(c => c.offsetParent && c.getBoundingClientRect().left < 60);
+    left.scrollIntoView({ block: "center" }); await new Promise(r => setTimeout(r, 300));
+    const sum = left.querySelector(".dsa-badge summary"); sum.click(); await new Promise(r => setTimeout(r, 200));
+    const r = left.querySelector(".dsa-badge-body").getBoundingClientRect(); sum.click();
+    return { left: Math.round(r.left), right: Math.round(r.right), vw: document.documentElement.clientWidth };
+  });
+  check("Phone: a left-column card's details pop-up stays on screen", pop.left >= 8 && pop.right <= pop.vw - 8, JSON.stringify(pop));
   await p.setViewportSize({ width: 1400, height: 1000 });
   await load("baguette tray");
   // Phone site: sorting is a row of chips in the Filters sheet (no sort menu). Stand-in modelled on

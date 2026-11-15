@@ -12,6 +12,7 @@ var DSA_CONFIG = {
   // model number on UPCitemdb's free plan and shows "Found at MERCHANT for PRICE". Userscript only.
   priceCheck: {
     enabled: true,
+    requestTimeoutMs: 25000, // give up on a lookup the userscript manager never answers
     minPrice: 0,           // only listings over this price (0 = any price)
     searchLimit: 20,       // UPCitemdb's free plan: 100 requests a day, of which 20 can be searches
     delayMs: 3000,         // between requests, one at a time

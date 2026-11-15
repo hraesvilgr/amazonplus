@@ -11,7 +11,10 @@
   font-family: "Amazon Ember", Arial, sans-serif;
   color: #0f1111;
 }
-#dsa-toggle.dsa-inline { max-width: 360px; margin: 8px 0 12px; }
+/* Phones: only as wide as what's in it (up to 360px). */
+#dsa-toggle.dsa-inline { width: -moz-fit-content; width: fit-content; max-width: min(360px, 100%); margin: 8px 0 12px; }
+/* The scan button and the brand list wrap to that width rather than widening the box. */
+#dsa-toggle.dsa-inline .dsa-scanbox, #dsa-toggle.dsa-inline .dsa-panel { contain: inline-size; }
 /* Floating at the top of the window once its place in the column has scrolled away */
 #dsa-toggle.dsa-float {
   position: fixed;
@@ -23,47 +26,51 @@
 }
 #dsa-toggle.dsa-float.dsa-float-tall { overflow-y: auto; }
 
-/* The logo button: only shown while the box is shrunk (phones, while scrolling). */
+/* ---------- phones (no left column: the box sits above the results, .dsa-inline) ----------
+   The logo sits in the box's left column, under the on/off switch, as wide as the switch (its
+   picture includes a 2px light grey outline, hence the 1.132). While scrolling, the box shrinks to
+   just that logo, left exactly where it is: everything else is hidden in place, so tapping the logo
+   opens the box around it without the logo moving. */
 #dsa-toggle .dsa-logo { display: none; }
-#dsa-toggle.dsa-mini {
-  width: auto !important;
-  padding: 0;
-  border: 0;
-  background: none;
-  box-shadow: none;
-  overflow: visible;
-}
-#dsa-toggle.dsa-mini > :not(.dsa-logo) { display: none !important; }
-#dsa-toggle.dsa-mini .dsa-logo {
+#dsa-toggle.dsa-inline { min-height: 92px; }
+#dsa-toggle.dsa-inline:not(.dsa-float) { position: relative; }
+#dsa-toggle.dsa-inline .dsa-logo {
   display: block;
+  position: absolute;
+  left: 9px;
+  top: 35px;
   padding: 0;
   margin: 0;
   border: 0;
   background: none;
-  cursor: pointer;
   line-height: 0;
+  cursor: default;
 }
-#dsa-toggle.dsa-mini .dsa-logo img {
-  display: block;
-  width: var(--dsa-logo-w, 40px);
-  height: auto;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));
-}
-#dsa-toggle.dsa-mini .dsa-logo-text {
-  display: block;
-  width: var(--dsa-logo-w, 40px);
+#dsa-toggle.dsa-inline .dsa-logo img,
+#dsa-toggle.dsa-inline .dsa-logo-text { display: block; width: calc(var(--dsa-logo-w, 40px) * 1.132); height: auto; }
+#dsa-toggle.dsa-inline .dsa-logo-text {
   font: 700 30px/1 Arial, sans-serif;
   color: #2e7d32;
-  text-shadow: 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.5);
+  text-shadow: -2px 0 #d6d6d6, 2px 0 #d6d6d6, 0 -2px #d6d6d6, 0 2px #d6d6d6;
 }
-#dsa-toggle.dsa-mini .dsa-logo-text b { color: #f5a623; font-size: 22px; vertical-align: top; }
-#dsa-toggle.dsa-mini.dsa-off .dsa-logo-text, #dsa-toggle.dsa-mini.dsa-off .dsa-logo-text b { color: #767676; }
+#dsa-toggle.dsa-inline .dsa-logo-text b { color: #f5a623; font-size: 22px; vertical-align: top; }
+#dsa-toggle.dsa-inline.dsa-off .dsa-logo-text, #dsa-toggle.dsa-inline.dsa-off .dsa-logo-text b { color: #767676; }
 /* AmazonPlus off: the logo in grey. */
-#dsa-toggle.dsa-mini.dsa-off .dsa-logo img {
-  filter: grayscale(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));
+#dsa-toggle.dsa-inline.dsa-off .dsa-logo img { filter: grayscale(1); }
+/* Shrunk: only the logo shows; the rest keeps its place, invisible and not in the way of taps. */
+#dsa-toggle.dsa-mini {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none;
 }
-/* The tap target stays a comfortable size even though the logo is small. */
-#dsa-toggle.dsa-mini .dsa-logo { padding: 4px; margin: -4px; }
+#dsa-toggle.dsa-mini > :not(.dsa-logo) { visibility: hidden; }
+#dsa-toggle.dsa-mini .dsa-logo { pointer-events: auto; cursor: pointer; }
+#dsa-toggle.dsa-mini .dsa-logo img { filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45)); }
+#dsa-toggle.dsa-mini.dsa-off .dsa-logo img { filter: grayscale(1) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45)); }
+/* Less room taken: no colour scale, and the status stays on one line (the script shrinks its text to fit). */
+#dsa-toggle.dsa-inline .dsa-legend { display: none; }
+#dsa-toggle.dsa-inline .dsa-status { white-space: nowrap; overflow: hidden; font-size: 12px; }
 
 .dsa-switch {
   display: flex;
@@ -313,10 +320,25 @@
   display: block; width: 100%; padding: 5px 8px; border: 1px solid #00aaff; border-radius: 6px;
   background: #e6f6ff; color: #0f1111; font: 12px/1.3 "Amazon Ember", Arial, sans-serif; text-align: left; cursor: pointer;
 }
-.dsa-scan:hover:not(:disabled) { background: #ccecff; }
+.dsa-scan:hover { background: #ccecff; }
 /* The price scan is experimental: a little bubbling flask on its button. */
-.dsa-scan { display: flex; align-items: center; gap: 7px; }
-.dsa-flask-wrap { flex: none; display: inline-flex; }
+/* A one-line title ("▾ Scan off-Amazon prices"; the flask in the top-right corner), then the radar
+   in the top-left corner of what's below it, the count and progress note wrapping round it. The
+   caret (as for Brands) folds the box to its title. */
+.dsa-scan { position: relative; display: block; box-sizing: border-box; padding: 5px 18px 5px 5px; font-size: 11px; line-height: 1.35; }
+.dsa-scan-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.dsa-scan-body { margin-top: 4px; }
+.dsa-scan-body::after { content: ""; display: block; clear: both; }
+.dsa-radar { float: left; display: block; width: 32px; height: 32px; margin: 0 6px 2px 0; }
+.dsa-scan-caret {
+  display: inline; padding: 0 3px 0 0; margin: 0; border: 0; background: none;
+  color: #007185; font: inherit; font-weight: 400; line-height: inherit; cursor: pointer;
+}
+.dsa-scan-label { display: block; }
+.dsa-scan-note { display: block; margin-top: 2px; font-size: 9px; color: #4d5151; }
+.dsa-scan.dsa-fold .dsa-scan-body { display: none; }
+.dsa-flask-wrap { position: absolute; top: 3px; right: 4px; display: inline-flex; }
+.dsa-flask { width: 9px; height: 14px; }
 .dsa-flask { display: block; overflow: visible; }
 .dsa-flask-glass { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 .dsa-flask-liquid { fill: #29a3e0; }
@@ -327,7 +349,6 @@
 @keyframes dsa-bubble-out { 0% { transform: translateY(2px); opacity: 0; } 25% { opacity: 0.8; } 100% { transform: translateY(-7px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .dsa-bub { animation: none; } .dsa-bub3 { opacity: 0.7; } }
 .dsa-scan:disabled { cursor: progress; opacity: 0.8; }
-.dsa-scan-note { margin-top: 4px; font-size: 11px; color: #565959; }
 .dsa-scan-note:empty { display: none; }
 
 /* ---------- Amazon's dark mode (html.dsa-dark, set when the page behind the results is dark) ---------- */
@@ -341,7 +362,8 @@
 .dsa-dark .dsa-manage,
 .dsa-dark .dsa-ph-details > summary { color: #4fc3e0; }
 .dsa-dark .dsa-scan { background: #0b3a52; color: #e3e6e6; }
-.dsa-dark .dsa-scan:hover:not(:disabled) { background: #0e4a68; }
+.dsa-dark .dsa-scan:hover { background: #0e4a68; }
+.dsa-dark .dsa-scan-caret { color: #6cc5ff; }
 .dsa-dark .dsa-badge-body { background: #22272a; color: #e3e6e6; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6); }
 .dsa-dark .dsa-badge li.dsa-good,
 .dsa-dark .dsa-ph-list li.dsa-good,
@@ -432,3 +454,22 @@ html.dsa-tiles div[data-component-type="s-search-result"] .s-product-image-conta
 html.dsa-tiles div[data-component-type="s-search-result"] h2 { font-size: 14px !important; line-height: 1.35 !important; }
 html.dsa-tiles div[data-component-type="s-search-result"] [data-cy="title-recipe"] { padding-right: 0 !important; }
 html.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4px 0 6px; }
+
+/* ---------- tidier result cards ----------
+   Hidden while AmazonPlus is on (put back when it's off): the long delivery wording (replaced by one
+   short "Delivery DATE" line), sustainability badges and their leaf, "90-day low" labels, and
+   crossed-out List/Typical/Was prices. */
+.dsa-trim { display: none !important; }
+.dsa-delivery { margin: 2px 0; font-size: 13px; line-height: 1.35; color: inherit; }
+/* Amazon's "Add to compare" button: in the photo's bottom-left corner, white with black lines. */
+.dsa-photo { position: relative !important; }
+.dsa-compare {
+  position: absolute !important;
+  left: 6px !important;
+  bottom: 6px !important;
+  top: auto !important;
+  right: auto !important;
+  margin: 0 !important;
+  z-index: 5;
+  filter: invert(1) grayscale(1);
+}

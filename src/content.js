@@ -23,6 +23,7 @@
   const KEY_LAST_CLICK = "dsaLastClick";      // the search result you last clicked through: {a: ASIN, at}
   const KEY_PRICES = "dsaOffPrices";          // off-Amazon price scans: query → { at, f: {m, p, u, at} | 0 }
   const KEY_PRICE_USAGE = "dsaUpcUsage";      // UPCitemdb free-plan use today: { used, limit, resetAt }
+  const KEY_SCAN_FOLD = "dsaScanFold";        // true: the scan box is folded down to its title
   const LISTINGS_MAX = 300;                   // most recently seen listings kept
   const CHECK_TTL = 30 * 864e5;               // product-page checks are reused for 30 days
   const KEY_MEMORY = "dsaMemory";
@@ -322,6 +323,14 @@
     badge.addEventListener("toggle", () => {
       if (!badge.open) return;
       build();
+      // Keep the pop-up on screen: on a phone, a card in the left column would push it off the left edge.
+      const body = badge.querySelector(".dsa-badge-body");
+      if (body) {
+        body.style.transform = "";
+        const r = body.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+        const dx = r.left < 8 ? 8 - r.left : (r.right > vw - 8 ? vw - 8 - r.right : 0);
+        if (dx) body.style.transform = `translateX(${Math.round(dx)}px)`;
+      }
       document.querySelectorAll(".dsa-badge[open]").forEach(b => { if (b !== badge) b.open = false; });
     });
     // On the card itself, not the inner container: Amazon clips overflow there, which would cut off the popover.
@@ -338,6 +347,140 @@
     card.querySelectorAll(".dsa-badge, .dsa-found").forEach(b => b.remove());
     card.querySelectorAll(".dsa-paint").forEach(t => t.classList.remove("dsa-paint"));
     if (card.classList.contains("dsa-paint")) card.classList.remove("dsa-paint");
+  }
+
+  // ---------- tidier result cards ----------
+  // While AmazonPlus is on, each card loses wording that's noise for comparing listings (put back when
+  // it's turned off; hidden with a class, never deleted): the delivery lines become one short
+  // "Delivery DATE" (the date for non-Prime members when Amazon gives both, plus the fee if it isn't
+  // free); sustainability badges ("Carbon impact", "Recycled materials", with their leaf),
+  // "90-day low" labels, "1K+ bought in past month", "Top reviewed for …", and crossed-out
+  // List / Typical / Was prices go. Found by their wording and
+  // Amazon's strike-through marker, so it works with both the desktop and phone layouts.
+  const TRIM = "dsa-trim";
+  const txt = n => (n.textContent || "").replace(/\s+/g, " ").trim();
+  const DELIVERY_LINE = /^(?:Join Prime to get |Or Non-members get |Or fastest delivery|Or Prime members get |FREE delivery|\$[\d.,]+ delivery|Delivery\b|Arrives\b)/i;
+  const SUSTAIN = /^(?:Carbon impact|Recycled materials|Climate Pledge Friendly|Sustainability features?|\d+ sustainability features?|Compact by design|Reduced carbon)/i;
+  const LOW_PRICE = /^(?:\d+-day low(?: price)?|Lowest price in \d+ days)$/i;
+  // "1K+ bought in past month", "Top reviewed for durability": popularity labels, not about the product.
+  const POPULARITY = /^(?:[\d.,]+[KkMm]?\+? bought in (?:the )?past (?:month|week)|[\d.,]+[KkMm]?\+? bought this (?:month|week)|Top reviewed for\b.*)$/i;
+  const STRUCK_LABEL = /^(?:List(?: Price)?|Typical(?: price)?|Was|New Price|Price)\s*:?$/i;
+
+  // The largest element around `n` (inside the card) whose text still passes `test`.
+  function widen(n, card, test) {
+    while (n.parentElement && n.parentElement !== card && test(txt(n.parentElement))) n = n.parentElement;
+    return n;
+  }
+  function trimMatching(card, re, maxLen) {
+    for (const n of card.querySelectorAll("div, span, a, i")) {
+      if (n.classList.contains(TRIM) || n.closest("." + TRIM + ", .dsa-badge, .dsa-found, .dsa-delivery")) continue;
+      const t = txt(n);
+      if (!t || t.length > maxLen || !re.test(t)) continue;
+      widen(n, card, p => p.length <= maxLen && re.test(p)).classList.add(TRIM);
+    }
+  }
+
+  function deliveryOf(lines) {
+    const pick = lines.find(t => /non-?members/i.test(t)) || lines.find(t => !/^or fastest/i.test(t));
+    if (!pick) return null;
+    const m = /(?:delivery|arrives)\s+(.+?)(?=\s+(?:on \$|on orders|if you|or\b|for\b|when\b|with\b)|[.]?\s*$)/i.exec(pick);
+    if (!m) return null;
+    const date = m[1].replace(/[\s,.]+$/, "");
+    if (!/\d|today|tomorrow|overnight/i.test(date)) return null;
+    const fee = /^\$([\d.,]+) delivery/i.exec(pick);
+    return { date, fee: fee ? "$" + fee[1] : "" };
+  }
+
+  function tidyCard(card) {
+    if (card.dataset.dsaTidy) return;
+    card.dataset.dsaTidy = "1";
+    // Delivery: Amazon's message rows, or (other layouts) the smallest elements reading like one.
+    let rows = [...card.querySelectorAll(".udm-primary-delivery-message, .udm-secondary-delivery-message")];
+    if (!rows.length) {
+      rows = [...card.querySelectorAll("div, span")].filter(n => {
+        const t = txt(n);
+        return t.length < 160 && DELIVERY_LINE.test(t) && ![...n.children].some(c => DELIVERY_LINE.test(txt(c)));
+      });
+      rows = rows.map(n => widen(n, card, p => p.length < 160 && DELIVERY_LINE.test(p)));
+      rows = rows.filter((n, i) => rows.indexOf(n) === i && !rows.some(o => o !== n && o.contains(n)));
+    }
+    const d = rows.length ? deliveryOf(rows.map(txt)) : null;
+    if (d) {
+      const line = el("div", { class: "dsa-delivery" }, "Delivery ", el("b", {}, d.date), d.fee ? ` (${d.fee})` : "");
+      rows[0].parentElement.insertBefore(line, rows[0]);
+      rows.forEach(r => r.classList.add(TRIM));
+    }
+    // Crossed-out prices, with their "List:" / "Typical:" / "Was:" label.
+    for (const p of card.querySelectorAll('.a-price[data-a-strike="true"], .a-text-price[data-a-strike="true"]')) {
+      if (p.closest("." + TRIM)) continue;
+      const box = p.parentElement;
+      const rest = box ? txt(box).replace(txt(p), "").trim() : "";
+      if (box && box !== card && STRUCK_LABEL.test(rest)) { box.classList.add(TRIM); continue; }
+      p.classList.add(TRIM);
+      const label = p.previousElementSibling;
+      if (label && STRUCK_LABEL.test(txt(label))) label.classList.add(TRIM);
+    }
+    trimMatching(card, SUSTAIN, 60);
+    trimMatching(card, LOW_PRICE, 30);
+    trimMatching(card, POPULARITY, 60);
+    moveCompare(card);
+  }
+
+  // Amazon's "Add to compare" button (phone site: a dark disc with two stacked cards and a "+") is
+  // pinned to the card's bottom-left corner, where it can cover the price. It goes to the bottom-left
+  // corner of the product photo instead, white with black lines (its colours inverted, whatever the
+  // icon is drawn with). Found by "compare" in its label, title, class or data; put back when off.
+  const COMPARE_SEL = '[aria-label*="compare" i], [title*="compare" i], [class*="compare" i], [data-action*="compare" i], [data-csa-c-content-id*="compare" i], [data-csa-c-type*="compare" i]';
+  const compareHome = new WeakMap();
+  function moveCompare(card) {
+    const img = card.querySelector("img.s-image");
+    let photo = card.querySelector(".s-product-image-container");
+    if (!photo && img && img.parentElement !== card && img.parentElement.getBoundingClientRect().height <= img.getBoundingClientRect().height * 1.5 + 20) photo = img.parentElement;
+    if (!photo) return;
+    const own = n => n.closest(".dsa-badge, .dsa-found, .dsa-delivery, #dsa-toggle") || compareHome.has(n) || photo.contains(n);
+    let found = null;
+    for (let btn of card.querySelectorAll(COMPARE_SEL)) {
+      if (own(btn)) continue;
+      // The whole control: up to the largest wrapper that holds nothing else visible (no text).
+      while (btn.parentElement && btn.parentElement !== card && !txt(btn.parentElement) && !btn.parentElement.contains(photo)) btn = btn.parentElement;
+      if (txt(btn).length > 40 || btn.contains(photo)) continue;
+      found = btn;
+      break;
+    }
+    // Phones, if it has no "compare" label: a small round icon button pinned near the card's
+    // bottom-left corner.
+    if (!found && !document.querySelector("#s-refinements, #s-filters-content")) {
+      const cr = card.getBoundingClientRect();
+      for (const n of card.querySelectorAll("div, span, a, button")) {
+        if (own(n) || !n.querySelector("svg, img, i") || txt(n).length > 2) continue;
+        const r = n.getBoundingClientRect();
+        if (r.width < 24 || r.width > 64 || Math.abs(r.width - r.height) > 6) continue;
+        if (r.left - cr.left > cr.width / 3 || cr.bottom - r.bottom > cr.height / 4) continue;
+        const cs = getComputedStyle(n);
+        if (cs.position !== "absolute" || parseFloat(cs.borderTopLeftRadius) < r.width / 3) continue;
+        found = n;
+        break;
+      }
+    }
+    if (!found) return;
+    compareHome.set(found, { parent: found.parentElement, next: found.nextSibling });
+    found.classList.add("dsa-compare");
+    photo.classList.add("dsa-photo");
+    photo.appendChild(found);
+  }
+
+  function untidyCard(card) {
+    delete card.dataset.dsaTidy;
+    card.querySelectorAll(".dsa-compare").forEach(btn => {
+      const home = compareHome.get(btn);
+      btn.classList.remove("dsa-compare");
+      if (home && home.parent.isConnected) home.parent.insertBefore(btn, home.next && home.next.parentNode === home.parent ? home.next : null);
+      compareHome.delete(btn);
+    });
+    card.querySelectorAll(".dsa-photo").forEach(n => n.classList.remove("dsa-photo"));
+    card.querySelectorAll(".dsa-delivery").forEach(n => n.remove());
+    card.querySelectorAll("." + TRIM).forEach(n => n.classList.remove(TRIM));
+    card.querySelectorAll(".dsa-compare").forEach(n => n.classList.remove("dsa-compare"));
   }
 
   // ---------- search-results estimates and product-page checks ----------
@@ -527,14 +670,34 @@
 
   function priceAvailable() { return !!(PC.enabled && canFetch && PRICECHECK); }
 
+  // One request through the userscript manager. Always settles: an answer, an error, or — if the
+  // manager never calls back at all (seen in testing: "Checking…" forever; e.g. Tampermonkey holding
+  // the request while it asks permission to connect, or a manager that ignores `timeout`) — our own
+  // time limit. `why` says which.
   function gmGet(url) {
     return new Promise(resolve => {
-      xhr({
-        method: "GET", url, timeout: 20000, headers: { Accept: "application/json" },
-        onload: r => resolve({ status: r.status, headers: r.responseHeaders || "", text: r.responseText || "" }),
-        onerror: () => resolve({ status: 0, headers: "", text: "" }),
-        ontimeout: () => resolve({ status: 0, headers: "", text: "" })
-      });
+      let settled = false, req = null;
+      const done = (r, why) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(Object.assign({ status: 0, headers: "", text: "", why }, r));
+      };
+      const limit = PC.requestTimeoutMs || 25000;
+      const timer = setTimeout(() => { try { req && req.abort && req.abort(); } catch (e) {} done({}, "no-callback"); }, limit);
+      try {
+        req = xhr({
+          method: "GET", url, timeout: limit - 2000, headers: { Accept: "application/json" },
+          onload: r => done({ status: r.status, headers: r.responseHeaders || "", text: r.responseText || "" }, "answer"),
+          onerror: r => done({ status: (r && r.status) || 0, text: (r && (r.error || r.statusText)) || "" }, "error"),
+          ontimeout: () => done({}, "timeout"),
+          onabort: () => done({}, "aborted")
+        });
+        // Greasemonkey 4's GM.xmlHttpRequest returns a promise that can reject without calling back.
+        if (req && typeof req.then === "function") req.then(null, e => done({ text: String(e && e.message || e) }, "error"));
+      } catch (e) {
+        done({ text: String(e && e.message || e) }, "error");
+      }
     });
   }
   const header = (h, name) => { const m = new RegExp("^" + name + ":\\s*(.+)$", "im").exec(h); return m ? m[1].trim() : null; };
@@ -630,6 +793,18 @@
     return r.bottom > 0 && r.top < (window.innerHeight || document.documentElement.clientHeight) && r.width > 0;
   }
 
+  let scanFold = false;
+  function onScanBox(e) {
+    e.preventDefault();
+    if (e.target.closest && e.target.closest(".dsa-scan-caret") || scanFold) {
+      scanFold = !scanFold;
+      storeSet(KEY_SCAN_FOLD, scanFold);
+      updateScanButton();
+      return;
+    }
+    scanPrices();
+  }
+
   function updateScanButton() {
     const btn = document.querySelector("#dsa-toggle .dsa-scan");
     const note = document.querySelector("#dsa-toggle .dsa-scan-note");
@@ -641,8 +816,14 @@
     // request is a search, so count against 20.
     const cap = PC.searchLimit || 20;
     const label = btn.querySelector(".dsa-scan-label") || btn;
-    label.textContent = (scanOn ? "Stop scanning for off-Amazon prices" : "Scan for off-Amazon prices") + `: ${Math.min(u.used, cap)}/${cap} used so far today`;
+    btn.classList.toggle("dsa-fold", scanFold);
+    const caret = btn.querySelector(".dsa-scan-caret");
+    if (caret) { caret.textContent = scanFold ? "▸" : "▾"; caret.setAttribute("aria-expanded", scanFold ? "false" : "true"); }
+    label.textContent = (scanOn ? "Tap to stop · " : "") + `${Math.min(u.used, cap)}/${cap} used today`;
     btn.setAttribute("aria-pressed", scanOn ? "true" : "false");
+    const radar = btn.querySelector(".dsa-radar");
+    const want = (scanOn ? globalThis.DSA_RADAR_SCAN : globalThis.DSA_RADAR_IDLE) || "";
+    if (radar && radar.getAttribute("src") !== want) radar.setAttribute("src", want);   // only on change: keeps the sweep smooth
     if (note) note.textContent = scanNote;
   }
 
@@ -657,6 +838,7 @@
       return;
     }
     scanOn = true;
+    scanNoAnswer = 0;
     scanTally.found = scanTally.none = 0;
     eligible.filter(inView).forEach(queueCard);
     scanNote = scanQueue.length ? "" : "Listings in view are already checked. Scroll to check more.";
@@ -669,6 +851,7 @@
     return (prefix ? prefix + " " : "") + (n ? `Checked ${n}: found ${scanTally.found} elsewhere, ${scanTally.none} not found.` : "");
   }
 
+  let scanNoAnswer = 0;
   async function runScan() {
     if (scanning) return;
     scanning = true;
@@ -680,12 +863,26 @@
         scanNote = `Checking ${q}…` + (scanQueue.length ? ` (${scanQueue.length} more in view)` : "");
         updateScanButton();
         let res = await gmGet(PRICECHECK.searchUrl(q));
-        noteUsage(res);
+        if (res.status) noteUsage(res);           // nothing reached UPCitemdb: nothing to count
         if (res.status === 429 && /TOO_FAST/i.test(res.text)) {   // too many in a short burst: wait and retry once
           await new Promise(r => setTimeout(r, 31000));
           res = await gmGet(PRICECHECK.searchUrl(q));
-          noteUsage(res);
+          if (res.status) noteUsage(res);
         }
+        if (!res.status) {
+          // No answer from UPCitemdb at all. Twice in a row: stop and say what's likely wrong.
+          scanQueued.delete(q);
+          console.warn(`[AmazonPlus] price scan: ${q} — no answer (${res.why}${res.text ? ": " + res.text : ""})`);
+          if (++scanNoAnswer >= 2) {
+            scanOn = false; scanQueue.length = 0; scanQueued.clear();
+            scanNote = res.why === "no-callback"
+              ? "UPCitemdb didn't answer: your userscript manager is holding the requests. In Tampermonkey, look for a tab or prompt asking to let AmazonPlus connect to api.upcitemdb.com and choose Always allow (or check the script's settings), then scan again."
+              : `UPCitemdb couldn't be reached (${res.why === "timeout" ? "no reply in time" : res.why === "aborted" ? "request cancelled" : "connection error"}${res.text ? ": " + res.text.slice(0, 80) : ""}). Check your connection, or whether your userscript manager blocks api.upcitemdb.com, then scan again.`;
+            break;
+          }
+          continue;
+        }
+        scanNoAnswer = 0;
         if (res.status === 429) {
           const after = parseInt(header(res.headers, "Retry-After"), 10);
           if (!isNaN(after)) usage.resetAt = Date.now() + after * 1000;
@@ -711,6 +908,10 @@
         if (scanQueue.length) await new Promise(r => setTimeout(r, PC.delayMs || 3000));
       }
       if (scanOn) scanNote = scanSummary("") + (scanSummary("") ? " " : "") + "Scroll to check more.";
+    } catch (e) {
+      console.error("[AmazonPlus] price scan failed", e);
+      scanOn = false; scanQueue.length = 0; scanQueued.clear();
+      scanNote = "The scan stopped on an error: " + String(e && e.message || e).slice(0, 100);
     } finally {
       scanning = false;
       updateScanButton();
@@ -874,6 +1075,7 @@
       const hidden = CFG.hideClutter === false ? 0 : removeClutter();
       lastResults = results;
       lastPromoCount = promosRemoved;
+      cards().forEach(tidyCard);
       updateStatus(results, mode, hidden);
     } finally {
       applying = false;
@@ -916,6 +1118,7 @@
     applying = true;
     try {
       cards().forEach(undecorate);
+      cards().forEach(untidyCard);
       document.querySelectorAll(".dsa-stray-head").forEach(n => n.classList.remove("dsa-stray-head"));
       if (snapshot) {
         for (const [parent, children] of snapshot.order) {
@@ -1237,14 +1440,26 @@
       for (const c of visible) tiers[+c.dataset.dsaTier]++;
       const extras = [];
       const media = cards().filter(c => c.dataset.dsaMedia === "1" && shown(c)).length;
-      if (media) extras.push(`${media} book${media === 1 ? "" : "s"}/media not rated`);
-      if (hidden) extras.push(`${hidden} promo${hidden === 1 ? "" : "s"} removed`);
+      // Phones: less room, so the media and promo notes are left out.
+      const narrow = !!status.closest(".dsa-inline");
+      if (media && !narrow) extras.push(`${media} book${media === 1 ? "" : "s"}/media not rated`);
+      if (hidden && !narrow) extras.push(`${hidden} promo${hidden === 1 ? "" : "s"} removed`);
       if (mode === "amazon") extras.push("Amazon's order");
       if (mode === "unit") extras.push("ordered by $/count");
       status.textContent = `${visible.length} rated · ${tiers[5] + tiers[4]} trusted · ${tiers[1]} junk` +
         (extras.length ? " · " + extras.join(" · ") : "");
     }
     updateManageLabel();
+    fitStatus();
+  }
+
+  // Phones: the status is one line; its text gets smaller (down to 9px) until it fits.
+  function fitStatus() {
+    const status = document.querySelector("#dsa-toggle.dsa-inline .dsa-status");
+    if (!status || !status.clientWidth) return;
+    let size = 12;
+    status.style.fontSize = size + "px";
+    while (status.scrollWidth > status.clientWidth + 0.5 && size > 9) status.style.fontSize = (size -= 0.5) + "px";
   }
 
   function updateManageLabel() {
@@ -1354,15 +1569,26 @@
         el("span", { class: "dsa-label" }, "AmazonPlus")),
       el("div", { class: "dsa-status" }, "Off"),
       el("div", { class: "dsa-legend", "aria-hidden": "true" }, el("span")),
-      el("div", { class: "dsa-scanbox", hidden: "" },
-        el("button", { type: "button", class: "dsa-scan", on: { click: e => { e.preventDefault(); scanPrices(); } } },
-          flaskIcon(), el("span", { class: "dsa-scan-label" }, "Scan for off-Amazon prices")),
-        el("div", { class: "dsa-scan-note" })),
       el("button", {
         type: "button", class: "dsa-manage",
         on: { click: e => { e.preventDefault(); panelOpen = !panelOpen; renderPanel(); } }
       }, ""),
       el("div", { class: "dsa-panel", hidden: "" }),
+      // The price scan, below Brands: a one-line title ("▾ Scan off-Amazon prices", flask in the
+      // corner: experimental), then the radar (grey and still; green and sweeping while scanning)
+      // with today's count and what the scan is doing. Tapping the box starts or stops a scan; the
+      // caret (like Brands') folds it to its title, and a tap on the folded box opens it again
+      // rather than starting a scan.
+      el("div", { class: "dsa-scanbox", hidden: "" },
+        el("div", { class: "dsa-scan", role: "button", tabindex: "0", on: { click: onScanBox, keydown: e => { if (e.key === "Enter" || e.key === " ") onScanBox(e); } } },
+          el("div", { class: "dsa-scan-head" },
+            el("button", { type: "button", class: "dsa-scan-caret", "aria-label": "Show or hide the price scan" }, "▾"),
+            el("span", { class: "dsa-scan-title" }, "Scan off-Amazon prices")),
+          el("div", { class: "dsa-scan-body" },
+            el("img", { class: "dsa-radar", src: globalThis.DSA_RADAR_IDLE || "", alt: "" }),
+            el("span", { class: "dsa-scan-label" }),
+            el("span", { class: "dsa-scan-note" })),
+          flaskIcon())),
       // Phones: while the box floats it shrinks to this logo; a tap opens it again.
       el("button", { type: "button", class: "dsa-logo", "aria-label": "Open AmazonPlus" },
         el("img", { src: globalThis.DSA_LOGO || "", alt: "AmazonPlus",
@@ -1394,7 +1620,6 @@
   // window, it floats at the top of the window over the filter column (same position and width),
   // and settles back into place when you scroll up again.
   function floatToggle(toggle) {
-    if (typeof IntersectionObserver !== "function") return;
     const spot = el("div", { class: "dsa-spot" });
     toggle.parentElement.insertBefore(spot, toggle);
     // Amazon shows a sticky search bar at the top of the window when you scroll back up; the box
@@ -1417,7 +1642,7 @@
     // On phones (no left column, the box sits above the results) the floating box would cover a
     // third of the screen, so it shrinks to the logo; tapping the logo opens the full box, and
     // tapping elsewhere or scrolling on shrinks it again.
-    let expanded = false, expandedAt = 0;
+    let expanded = false;
     const mini = () => {
       const want = toggle.classList.contains("dsa-float") && toggle.classList.contains("dsa-inline") && !expanded;
       // The logo is as wide as the on/off switch (measured while the switch is still showing).
@@ -1427,7 +1652,8 @@
     };
     toggle.querySelector(".dsa-logo").addEventListener("click", e => {
       e.preventDefault();
-      expanded = true; expandedAt = window.scrollY;
+      if (!toggle.classList.contains("dsa-float")) return;     // in its place, the logo is just a logo
+      expanded = !expanded;                                     // opens the box; tapped again, closes it
       mini(); place();
     });
     document.addEventListener("click", e => {
@@ -1436,48 +1662,65 @@
     }, true);
     const place = () => {
       if (!toggle.classList.contains("dsa-float")) return;
-      if (expanded && Math.abs(window.scrollY - expandedAt) > 150) { expanded = false; mini(); }
       const r = spot.getBoundingClientRect();
-      toggle.style.left = r.left + "px";
-      toggle.style.width = r.width + "px";
+      // Phones: as far from the left edge of the screen as from the top (8px).
+      const inline = toggle.classList.contains("dsa-inline");
+      const left = inline ? Math.max(r.left, 8) : r.left;
+      toggle.style.left = left + "px";
+      // Phones: as narrow as its contents allow (styles.css), never past the right edge.
+      if (inline) { toggle.style.width = ""; toggle.style.maxWidth = Math.min(360, innerWidth - left - 8) + "px"; }
+      else toggle.style.width = r.width + "px";
       const top = Math.round(headerBottom(r.left + r.width / 2)) + 8;
       toggle.style.top = top + "px";
       // Scrolls inside only when it's taller than the room left (e.g. the brand list is open).
       toggle.style.maxHeight = (innerHeight - top - 8) + "px";
       toggle.classList.toggle("dsa-float-tall", toggle.scrollHeight > innerHeight - top - 8);
     };
-    new IntersectionObserver(([e]) => {
-      const off = !e.isIntersecting && e.boundingClientRect.top < 0;
-      if (off === toggle.classList.contains("dsa-float")) return;
-      if (off) {
-        expanded = false;
-        // Hold the box's place exactly, margins included: if the content below moves even a few
-        // pixels, the browser shifts the scroll position to compensate (scroll anchoring), the
-        // place comes back into view, the box docks, and it flickers on and off (seen on phones,
-        // where the box sits in the results column).
-        const below = toggle.nextElementSibling || toggle.parentElement;
-        // Page coordinates, not window ones: the browser may adjust the scroll position mid-measurement.
-        const edge = () => (below === toggle.parentElement ? below.getBoundingClientRect().bottom : below.getBoundingClientRect().top) + window.scrollY;
-        const before = edge(), height = toggle.offsetHeight;
-        spot.style.height = height + "px";
-        toggle.classList.add("dsa-float");
-        const shift = before - edge();
-        if (Math.abs(shift) > 0.5) spot.style.height = (height + shift) + "px";
-        mini();
-        place();
-      } else {
-        expanded = false;
-        toggle.classList.remove("dsa-float", "dsa-float-tall", "dsa-mini");
-        toggle.style.left = toggle.style.width = toggle.style.top = toggle.style.maxHeight = "";
-        spot.style.height = "";
-      }
-    }, { threshold: 0 }).observe(spot);
-    window.addEventListener("resize", place, { passive: true });
+    // Float or dock, from where the box's place in the page is. The floating box (or its logo)
+    // gives way to the box itself as soon as any of that place scrolls back into view, and it
+    // floats again only once the place is 8px clear above the window: the band between keeps the
+    // two from taking turns (they flickered on phones when scrolling up).
+    // `expanded` is the user's choice: once they've reopened the shrunk box with the logo, it stays
+    // open while they scroll (also after it docks and floats again) until they close it.
+    const dock = () => {
+      toggle.classList.remove("dsa-float", "dsa-float-tall", "dsa-mini");
+      toggle.style.left = toggle.style.width = toggle.style.top = toggle.style.maxHeight = toggle.style.maxWidth = "";
+      spot.style.height = "";
+    };
+    const float = () => {
+      // Hold the box's place exactly, margins included: if the content below moves even a few
+      // pixels, the browser shifts the scroll position to compensate (scroll anchoring), the
+      // place comes back into view, the box docks, and it flickers on and off.
+      const below = toggle.nextElementSibling || toggle.parentElement;
+      // Page coordinates, not window ones: the browser may adjust the scroll position mid-measurement.
+      const edge = () => (below === toggle.parentElement ? below.getBoundingClientRect().bottom : below.getBoundingClientRect().top) + window.scrollY;
+      const before = edge(), height = toggle.offsetHeight;
+      spot.style.height = height + "px";
+      toggle.classList.add("dsa-float");
+      const shift = before - edge();
+      if (Math.abs(shift) > 0.5) spot.style.height = (height + shift) + "px";
+      mini();
+      place();
+    };
+    const placeBottom = () => {
+      const top = spot.getBoundingClientRect().top;
+      if (toggle.classList.contains("dsa-float")) return top + spot.offsetHeight;
+      const cs = getComputedStyle(toggle);
+      return top + toggle.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+    };
+    const check = () => {
+      const floating = toggle.classList.contains("dsa-float"), bottom = placeBottom();
+      if (floating && bottom > 0) dock();
+      else if (!floating && bottom < -8) float();
+      else if (floating) place();
+    };
+    check();
+    window.addEventListener("resize", () => { check(); place(); fitStatus(); }, { passive: true });
     let ticking = false;
     window.addEventListener("scroll", () => {
-      if (ticking || !toggle.classList.contains("dsa-float")) return;
+      if (ticking) return;
       ticking = true;
-      requestAnimationFrame(() => { ticking = false; place(); });
+      requestAnimationFrame(() => { ticking = false; check(); });
     }, { passive: true });
     // Opening the brand list makes the box taller.
     new MutationObserver(() => requestAnimationFrame(place)).observe(toggle, { attributes: true, subtree: true, attributeFilter: ["hidden", "open"] });
@@ -1572,8 +1815,9 @@
   }
 
   migrateOldSettings().then(() => Promise.all([storeGet(KEY_ENABLED, false), storeGet(KEY_MEMORY, null),
-    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null)]))
-    .then(([on, mem, choice, featured, seen, clicked, priceCache, use]) => {
+    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false)]))
+    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold]) => {
+    scanFold = fold === true;
     prices = priceCache && typeof priceCache === "object" ? priceCache : {};
     if (use && typeof use === "object") usage = Object.assign(usage, use);
     lastClick = clicked && typeof clicked === "object" ? clicked : null;
