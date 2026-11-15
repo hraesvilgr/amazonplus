@@ -514,6 +514,10 @@ html.dsa-tiles .dsa-tile .s-product-image-container img.s-image:not(.dsa-tile di
 }
 html.dsa-tiles .dsa-tile h2:not(.dsa-tile div[data-component-type="s-search-result"] *) { font-size: 14px !important; line-height: 1.35 !important; }
 html.dsa-tiles .dsa-tile [data-cy="title-recipe"]:not(.dsa-tile div[data-component-type="s-search-result"] *) { padding-right: 0 !important; }
+/* The trust stripe down a tile's left edge (6px) gets room of its own: text never runs into it,
+   whatever spacing Amazon's own card markup has (signed-out grid cards have almost none). */
+html.dsa-tiles .s-main-slot > .dsa-tile.dsa-paint,
+html.dsa-tiles .dsa-tile .dsa-paint:not(.dsa-tile div[data-component-type="s-search-result"] *) { padding-left: 10px !important; box-sizing: border-box; }
 html.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4px 0 6px; }
 
 /* ---------- tidier result cards ----------

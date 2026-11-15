@@ -598,6 +598,19 @@ const products = require("./fixtures/products-2026-10-28.json");
   check("Tile view: results laid out as rows of cards, the cards' insides stacked to fit", tiles.on && tiles.perRow >= 3 && tiles.widest < 320, JSON.stringify(tiles));
   check("…with pagination across the full width below them", tiles.pagerFull, JSON.stringify(tiles));
   check("…titles line up across each row, whatever the photo height or a 'Best Seller' label", tiles.titleSpread <= 1, JSON.stringify(tiles));
+  // Signed-out grid cards have next to no padding of their own: text must still clear the trust stripe
+  const gap = await p.evaluate(() => {
+    document.querySelectorAll(".s-card-container").forEach(c => { c.style.padding = "0"; });
+    document.querySelectorAll(".dsa-tile .puisg-col").forEach(c => c.style.setProperty("padding", "0", "important"));
+    const out = [];
+    for (const t of document.querySelectorAll(".s-main-slot > .dsa-tile")) {
+      const paint = t.classList.contains("dsa-paint") ? t : t.querySelector(".dsa-paint"), h = t.querySelector("h2");
+      if (!paint || !h || !h.getClientRects().length) continue;
+      out.push(h.getBoundingClientRect().left - paint.getBoundingClientRect().left);
+    }
+    return { n: out.length, min: Math.min(...out) };
+  });
+  check("…and tile text keeps clear of the trust stripe down the left edge", gap.n > 10 && gap.min >= 9, JSON.stringify(gap));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
   check("…and AmazonPlus off gives Amazon's own layout back", !(await p.evaluate(() => document.documentElement.classList.contains("dsa-tiles"))));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
