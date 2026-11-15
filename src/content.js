@@ -380,15 +380,34 @@
     }
   }
 
-  function deliveryOf(lines) {
-    const pick = lines.find(t => /non-?members/i.test(t)) || lines.find(t => !/^or fastest/i.test(t));
-    if (!pick) return null;
-    const m = /(?:delivery|arrives)\s+(.+?)(?=\s+(?:on \$|on orders|if you|or\b|for\b|when\b|with\b)|[.]?\s*$)/i.exec(pick);
+  // Amazon's delivery rows → our short lines:
+  //   "Join Prime to get FREE delivery Tomorrow, Nov 16"             → Prime: Free Delivery Tomorrow, Nov 16
+  //   "Or Non-members get FREE delivery Fri, Nov 20 on $35 of items…" → Non-Prime: Free Delivery Fri, Nov 20 on $35+ orders
+  //   "$5.99 delivery Nov 6 - 10" (no Prime/non-member split)         → $5.99 Delivery Nov 6 - 10
+  // "Or fastest delivery …" is left out.
+  function deliveryPart(t) {
+    const m = /(?:delivery|arrives)\s+(.+?)(?=\s+(?:on \$|on orders|on eligible|if you|or\b|for\b|when\b|with\b)|[.]?\s*$)/i.exec(t);
     if (!m) return null;
-    const date = m[1].replace(/[\s,.]+$/, "");
-    if (!/\d|today|tomorrow|overnight/i.test(date)) return null;
-    const fee = /^\$([\d.,]+) delivery/i.exec(pick);
-    return { date, fee: fee ? "$" + fee[1] : "" };
+    const when = m[1].replace(/[\s,.]+$/, "");
+    if (!/\d|today|tomorrow|overnight/i.test(when)) return null;
+    const fee = /\$([\d.,]+)\s+delivery/i.exec(t);
+    const price = fee ? "$" + fee[1] : (/free delivery/i.test(t) ? "Free" : "");
+    const min = /\bon (?:orders (?:over|of) |eligible orders over )?\$([\d.,]+)/i.exec(t);
+    return { price, when, min: min ? "$" + min[1].replace(/\.00$/, "") : "" };
+  }
+  function deliveryOf(lines) {
+    const out = [];
+    for (const t of lines) {
+      if (/^or fastest/i.test(t)) continue;
+      const d = deliveryPart(t);
+      if (!d) continue;
+      const who = /non-?members|without prime/i.test(t) ? "Non-Prime" : /\bprime\b/i.test(t) ? "Prime" : "";
+      if (out.some(o => o.who === who)) continue;
+      out.push(Object.assign({ who }, d));
+    }
+    // Prime first, then Non-Prime, then an unlabelled line.
+    const rank = w => (w === "Prime" ? 0 : w === "Non-Prime" ? 1 : 2);
+    return out.length ? out.sort((a, b) => rank(a.who) - rank(b.who)) : null;
   }
 
   function tidyCard(card) {
@@ -404,10 +423,13 @@
       rows = rows.map(n => widen(n, card, p => p.length < 160 && DELIVERY_LINE.test(p)));
       rows = rows.filter((n, i) => rows.indexOf(n) === i && !rows.some(o => o !== n && o.contains(n)));
     }
-    const d = rows.length ? deliveryOf(rows.map(txt)) : null;
-    if (d) {
-      const line = el("div", { class: "dsa-delivery" }, "Delivery ", el("b", {}, d.date), d.fee ? ` (${d.fee})` : "");
-      rows[0].parentElement.insertBefore(line, rows[0]);
+    const ds = rows.length ? deliveryOf(rows.map(txt)) : null;
+    if (ds) {
+      for (const d of ds) {
+        const line = el("div", { class: "dsa-delivery" },
+          d.who ? d.who + ": " : "", (d.price ? d.price + " " : "") + "Delivery ", el("b", {}, d.when), d.min ? ` on ${d.min}+ orders` : "");
+        rows[0].parentElement.insertBefore(line, rows[0]);
+      }
       rows.forEach(r => r.classList.add(TRIM));
     }
     // Crossed-out prices, with their "List:" / "Typical:" / "Was:" label.
@@ -982,7 +1004,9 @@
 
   // ---------- apply / restore ----------
 
-  function cards() { return [...document.querySelectorAll(CARD_SEL)].filter(c => c.dataset.asin); }
+  // Top-level results only: a result can hold others (a group block, or hidden size/colour variants);
+  // those are left exactly as Amazon draws them.
+  function cards() { return [...document.querySelectorAll(CARD_SEL)].filter(c => c.dataset.asin && !(c.parentElement && c.parentElement.closest(CARD_SEL))); }
 
   // Books, films, TV, music and games aren't rated. A search where nearly everything (80%+) is
   // media gets no AmazonPlus at all; on mixed pages the media results are just left alone.
@@ -1076,6 +1100,7 @@
       lastResults = results;
       lastPromoCount = promosRemoved;
       cards().forEach(tidyCard);
+      cards().forEach(tileClass);
       updateStatus(results, mode, hidden);
     } finally {
       applying = false;
@@ -1085,6 +1110,16 @@
 
   // Tile view: the results grid becomes rows of cards (styles.css, html.dsa-tiles), whatever layout
   // Amazon chose for the search. Off again when AmazonPlus is switched off.
+  // Which results become tiles: each top-level result, except one that shows several products side
+  // by side (Amazon's group blocks), which keeps the full width of the results. Products nested in a
+  // result (shown or not) are never restyled: styles.css scopes every tile rule to .dsa-tile and
+  // keeps it out of nested results.
+  function tileClass(card) {
+    if (card.classList.contains("dsa-tile") || card.classList.contains("dsa-group")) return;
+    const shown = [...card.querySelectorAll(CARD_SEL)].filter(n => { const r = n.getBoundingClientRect(); return r.width > 40 && r.height > 40; });
+    card.classList.add(shown.length >= 2 ? "dsa-group" : "dsa-tile");
+  }
+
   function setTiles(on) {
     document.documentElement.classList.toggle("dsa-tiles", !!on && CFG.tiles !== false);
   }
@@ -1119,6 +1154,7 @@
     try {
       cards().forEach(undecorate);
       cards().forEach(untidyCard);
+      cards().forEach(c => c.classList.remove("dsa-tile", "dsa-group"));
       document.querySelectorAll(".dsa-stray-head").forEach(n => n.classList.remove("dsa-stray-head"));
       if (snapshot) {
         for (const [parent, children] of snapshot.order) {

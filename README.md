@@ -6,53 +6,21 @@
 
 [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K4R529MTQE)
 
-A userscript (and Firefox extension) for Amazon search results. It adds a **AmazonPlus** toggle at the top of the left-hand filter column. Turning it on:
+A userscript (and Firefox extension) for Amazon search results that adds an **AmazonPlus** toggle at the top of the left-hand filter column (or, on mobile, the top of the results page). Turning it on makes your search results page more user-friendly:
 
-- gives every listing a trust score (0–100) and tier (1–5),
-- tints each card from green (trusted) through yellow to red (junk), with a coloured edge,
-- re-sorts the results so the most trustworthy listings come first — only on Amazon's default **Featured** order; if you pick another sort (Avg. Customer Review, price, newest, best sellers) your order is kept and the cards are just coloured and rated,
-- hides repeat placements of the same product (keeps the organic one, drops the sponsored copy),
-- removes the promo blocks Amazon mixes into results (sponsored brand banners and videos, Amazon Haul "Crazy-good finds", "Explore the collection", "Brands related to your search", "Today's deals", "Trending now", "Customers frequently viewed", "Related searches"…). Everything in the results grid that isn't a product card, a section heading, "Narrow your search", pagination or help is removed from the page, with videos stopped and ad frames unloaded first, so their memory is freed. They come back on the next page load. Set `hideClutter: false` in `src/config.js` to keep them,
-- adds a small **Trust n/5** pill in each card's top-right corner — click it for a pop-over listing exactly which signals added or removed points.
+- **Trust:** estimates a trust score for each item listing based only on what's visible from the page, re-orders the results to put the most trustworthy listings first, and adds a small Trust bug in each card's top-right corner — click it to see what signals added or removed points
+- **Tidier Results:** hides promo blocks and repeats of the same product
+- **Universal Tile View:** search results always show as a grid of cards, even on searches where Amazon would list them row by row, so more listings can be seen at a glance. This can be modified in `src/config.js`
+- **More Succinct Product Tiles:** reduces needlessly verbose wording and hides questionable "regular" prices and other miscellaneous irrelevancies
+- **New Sort options:** while the toggle is on, Amazon's own Sort by menu gets two extra entries:
+  - **AmazonPlus: Trust** — most trusted first (a fresh search shows this by default)
+  - **AmazonPlus: $/count** — cheapest per unit first
 
-Inside each badge are **Trust** and **Block** buttons for that listing's brand. Under the toggle, **Brands** opens a manager listing your ratings and the brands it has learned.
+**Scan for off-Amazon prices:** this is experimental and limited in capacity so far. A box below Brands, titled "Scan off-Amazon prices", starts a scan of each listing on the search results page, as it comes into view, that has a manufacturer model number, and attempts to look them up in [UPCitemdb](https://www.upcitemdb.com)'s product database one at a time. If an identical item is sold elsewhere — the same model number with nothing else bundled, new, in stock, by a US store other than Amazon or eBay, at a price UPCitemdb has seen in the last 60 days — the cheapest appears in a blue box beside the Amazon price.
 
-**Sort by menu.** While the toggle is on, Amazon's own **Sort by** menu gets two extra entries:
+It also makes a few changes to individual product pages: a panel under the title estimates a more precise Trust rating from what the product page shows, compared with the rougher search-results estimate, and lists what changed.
 
-- **AmazonPlus: Trust** — most trusted first. A fresh search shows this by default.
-- **AmazonPlus: $/count** — cheapest per unit first, using Amazon's "($0.13/count)", "($2.99/ounce)". Compatible units are converted (pounds and grams → per ounce, millilitres and litres → per fl oz, inches → per foot); listings in the page's most common unit come first, then other units, then listings with no unit price. Subscription prices ("/month") are ignored.
-
-Picking either stays in effect on later searches until you pick one of Amazon's sorts. Amazon's sorts keep Amazon's order with the colours and badges; picking **Featured** shows Amazon's real Featured order for that search. Unlike Amazon's sorts, the AmazonPlus ones re-order the results already on the page (each results page separately) and don't change the URL.
-
-**Product pages.** Click through to a listing and a panel under the title gives a better rating from what only the product page shows, compared with the search-results estimate. Next to the Trust pill, ▲12 / ▼17 / – shows how far the score moved (hover for from → to); opened without searching first, it compares against the rating from the title, stars and review count alone — and lists what changed:
-
-- the brand Amazon states for the listing (instead of the guess from the title), and the exact review count and, where shown, the "Date First Available";
-- **Sold by Amazon.com** (+5), or sold by an anonymous trading account such as "luoyanggezhibushangmaoyouxiangongsi" (−6);
-- bullet points: 【bracketed】 headings (−6), marketing phrases (−4), deliberately broken words like "baguett-e" (−10), customer-service hard sell (−4), walls of text over 1,300 / 1,800 characters (−3 / −6), or short factual bullets under 600 characters (+3);
-- extreme rating spreads only (15%+ 1-star, or 85%+ 5-star with under 6% 4-star) — ordinary spreads don't separate junk from real brands;
-- Amazon's own "Frequently returned item" warning (−12).
-
-If Amazon opens a different size or colour than the result you clicked (it often reopens the size you picked last time), or you switch variants on the page, the comparison is with the result you clicked. If a page can't be read, the panel says so and shows the error.
-
-Back on the search results, a checked listing uses the refined rating for 30 days and its pill gets a ✓. Settings live in `productWeights` in `src/config.js`.
-
-**Scan for off-Amazon prices** *(experimental, marked with a flask)*. A box below Brands, titled "Scan off-Amazon prices", with a radar (grey while idle, green and sweeping while scanning) and today's count; its ▾ caret folds it down to just its title in the AmazonPlus box — "2/20 used today" — starts a scan: every listing that has a manufacturer model number (e.g. "(DCF787D1)", "3453-20") — at any price, in any department — is looked up in [UPCitemdb](https://www.upcitemdb.com)'s product database as it comes into view, one at a time, one request per listing, so results you never scroll to cost nothing. The box then reads "Tap to stop"; the scan lasts until you stop it, leave the page, or reach the daily limit. If an identical item is sold elsewhere — the same model number with nothing else bundled (no accessory sets, no "W/ blower", no 2-packs, no batteries or parts that merely mention the model), new, in stock, by a US store other than Amazon or eBay, at a price UPCitemdb has seen in the last 60 days — the cheapest appears in a blue box beside the Amazon price: "Found at MERCHANT for PRICE", linked to that store's listing (through UPCitemdb's redirect), with "View Google Shopping results" underneath. Listings with nothing identical are left exactly as they are. Nothing is looked up unless you start a scan. UPCitemdb's free plan allows 100 requests a day per internet connection, but only 20 of them can be searches, and each listing takes one search, so the button counts against 20 (about 20 listings a day), with no sign-up; the count comes from UPCitemdb's own replies. Results are kept for 72 hours, so repeat searches don't spend requests on listings already checked. UPCitemdb's store prices can lag behind the stores' own — hover the box to see when the price was seen. If the scan stops saying UPCitemdb didn't answer, your userscript manager is holding the requests: in Tampermonkey, allow AmazonPlus to connect to api.upcitemdb.com ("Always allow") and scan again. Settings are in `priceCheck` in `src/config.js`.
-
-**Books, films, TV, music and games are left alone.** The trust signals are for physical goods, so books (print, Kindle, audiobooks), films and TV (DVD, Blu-ray, Prime Video), music (CDs, vinyl) and video games get no rating. Their product pages get no panel; a search where nearly all the results (80%+) are media gets no AmazonPlus at all (no toggle, nothing re-ordered or removed); on mixed searches the media results get no badge or colour and keep the places Amazon gave them, with the rated listings sorted around them — so a search for a game keeps the game on top. Game controllers, consoles, headsets, chargers and other accessories are still rated.
-
-**On phones,** where Amazon has no sort menu, "AmazonPlus: Trust" and "AmazonPlus: $/count" are added as chips to the Sort by row of Amazon's Filters sheet, and the lit chip shows the order that's actually on screen. Tapping "Featured" there gives Amazon's own order.
-
-On a phone the box is compact (no colour scale; a one-line status without the media and promo notes) and shows the AmazonPlus logo under the on/off switch, in colour when AmazonPlus is on and grey when it's off. While you scroll, it shrinks to just that logo, left exactly where it is, so it doesn't cover the results; tap the logo to open the box around it; once you've opened it, it stays open while you scroll, until you tap the logo again or tap elsewhere. The phone box is only as wide as its contents. Scrolling back up, the box takes over as soon as its place comes back into view.
-
-**Tidier cards.** While AmazonPlus is on, each listing's delivery wording ("Join Prime to get FREE delivery Tomorrow… Or Non-members get FREE delivery Fri, Nov 20…") becomes one line, "Delivery Fri, Nov 20" (the non-member date, plus the fee when delivery isn't free), and sustainability badges, "90-day low" labels, "1K+ bought in past month", "Top reviewed for …" and crossed-out List/Typical/Was prices are hidden. On phones, Amazon's "Add to compare" button moves from the card's corner (where it can cover the price) to the bottom-left corner of the product photo, white with black lines. Turning AmazonPlus off puts them back.
-
-**Tile view.** Search results always show as a grid of cards (as Amazon does for clothing or home decor), even on searches where Amazon would list them row by row — more listings fit on screen, which makes the colours easy to compare. The number of columns follows the window width (two on a phone). Settings: `tiles` in `src/config.js`.
-
-The AmazonPlus box stays in view: once you scroll past it, it floats at the top of the window over the filter column (below Amazon's sticky search bar when that's showing), and settles back into place when you scroll up.
-
-Turning it off puts the page back the way Amazon served it, layout included. The toggle state is remembered, so it stays on as you move between searches and pages.
-
-**Dark mode.** When Amazon shows a dark page, AmazonPlus switches to dark tints with light text, so Amazon's own light text stays readable on the coloured cards; every text the script draws is at least 4.5:1 against its background in both modes.
+Toggling AmazonPlus off puts everything back the way Amazon served it, layout included. The toggle state is remembered, so it stays on as you move between searches and pages. Books, films, TV, music and games are excluded from AmazonPlus, as Trust doesn't really make sense for media.
 
 ## Permissions and privacy
 

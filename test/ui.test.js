@@ -671,9 +671,9 @@ const products = require("./fixtures/products-2026-10-28.json");
     return { a: seen(a), b: seen(b), price: !!a.querySelector(".a-price:not([data-a-strike]) .a-offscreen") && a.querySelector(".a-price:not([data-a-strike])").getClientRects().length > 0 };
   });
   const td = await tidy();
-  check("Cards: the delivery wording becomes one line, the non-member date ('Delivery Fri, Nov 20')",
-    /Delivery Fri, Nov 20/.test(td.a) && !/Join Prime|Non-members|Tomorrow, Nov 16|\$35 of items/.test(td.a), td.a.slice(0, 400));
-  check("…a delivery fee is kept with it ('Delivery Nov 6 - 10 ($5.99)')", /Delivery Nov 6 - 10 \(\$5\.99\)/.test(td.b) && !/\$5\.99 delivery/.test(td.b), td.b.slice(0, 300));
+  check("Cards: delivery becomes 'Prime: Free Delivery Tomorrow, Nov 16' and 'Non-Prime: Free Delivery Fri, Nov 20 on $35+ orders'",
+    /Prime: Free Delivery Tomorrow, Nov 16/.test(td.a) && /Non-Prime: Free Delivery Fri, Nov 20 on \$35\+ orders/.test(td.a) && !/Join Prime|Non-members get|\$35 of items/.test(td.a), td.a.slice(0, 500));
+  check("…a delivery fee shows as the price ('$5.99 Delivery Nov 6 - 10')", /\$5\.99 Delivery Nov 6 - 10/.test(td.b) && !/\$5\.99 delivery/.test(td.b), td.b.slice(0, 300));
   check("…no sustainability badges, '90-day low', 'bought in past month', 'Top reviewed for' or crossed-out List/Typical prices; the real price and stock note stay",
     !/Carbon impact|Recycled materials|\+2 more|90-day low|bought in past month|Top reviewed for|List:|Typical:|\$89\.99|\$79\.99/.test(td.a + td.b) && td.price && /Only 3 left in stock/.test(td.a), td.a.slice(0, 400));
   const cmp = await p.evaluate(() => {
@@ -687,9 +687,35 @@ const products = require("./fixtures/products-2026-10-28.json");
     const a = document.querySelector('[data-test-tidy="a"]'), btn = a.querySelector('[aria-label="Add to compare"]');
     return !a.querySelector(".s-product-image-container").contains(btn) && !btn.closest(".dsa-compare") && btn.parentElement.parentElement === a; }));
   const untd = await tidy();
-  check("…and turning AmazonPlus off puts Amazon's wording back", /Join Prime to get FREE delivery/.test(untd.a) && /Carbon impact/.test(untd.a) && /List:/.test(untd.a) && !/Delivery Fri, Nov 20/.test(untd.a), untd.a.slice(0, 300));
+  check("…and turning AmazonPlus off puts Amazon's wording back", /Join Prime to get FREE delivery/.test(untd.a) && /Carbon impact/.test(untd.a) && /List:/.test(untd.a) && !/Non-Prime: Free Delivery/.test(untd.a), untd.a.slice(0, 300));
   await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(300);
-  check("…on again: tidied again", /Delivery Fri, Nov 20/.test((await tidy()).a));
+  check("…on again: tidied again", /Non-Prime: Free Delivery Fri, Nov 20/.test((await tidy()).a));
+  // Results nested inside a result (seen for real: a listing squashed into thin stripes, a row of
+  // 'T' pills): hidden size/colour variants inside a listing, and a group block showing products side by side
+  const nestInject = `(() => {
+    const all = [...document.querySelectorAll('.s-main-slot > div[data-component-type="s-search-result"]')];
+    const once = all.filter(x => all.filter(y => y.dataset.asin === x.dataset.asin).length === 1);
+    const v = once[2], g = once[5];
+    v.dataset.testNest = "variants"; g.dataset.testNest = "group";
+    const sub = (asin, style) => '<div data-component-type="s-search-result" data-asin="' + asin + '" class="s-result-item" style="' + style + '"><div class="puisg-row" style="display:flex"><div class="puisg-col" style="width:249px;display:none">v</div></div><h2><span>Variant ' + asin + '</span></h2></div>';
+    let html = ""; for (let i = 0; i < 13; i++) html += sub("BVAR" + i, "display:none");
+    (v.querySelector(".s-card-container") || v).insertAdjacentHTML("beforeend", '<div class="variants">' + html + '</div>');
+    let row = ""; for (let i = 0; i < 4; i++) row += sub("BGRP" + i, "width:200px;height:150px;flex:none");
+    g.insertAdjacentHTML("beforeend", '<div class="group-row" style="display:flex;gap:8px">' + row + '</div>');
+  })();`;
+  await load("baguette tray", nestInject);
+  await p.waitForTimeout(600);
+  const nest = await p.evaluate(() => {
+    const v = document.querySelector('[data-test-nest="variants"]'), g = document.querySelector('[data-test-nest="group"]'), slot = document.querySelector(".s-main-slot").getBoundingClientRect();
+    const subs = [...document.querySelectorAll('[data-asin^="BVAR"], [data-asin^="BGRP"]')];
+    return { vTile: v.classList.contains("dsa-tile"), vW: Math.round(v.getBoundingClientRect().width), vH: Math.round(v.getBoundingClientRect().height),
+      variantsHidden: [...v.querySelectorAll('[data-asin^="BVAR"]')].every(n => getComputedStyle(n).display === "none" && getComputedStyle(n.querySelector(".puisg-col")).display === "none"),
+      nestedBadges: subs.filter(n => n.querySelector(".dsa-badge")).length, outerBadges: !!v.querySelector(":scope .dsa-badge") && !!g.querySelector(".dsa-badge"),
+      gGroup: g.classList.contains("dsa-group"), gFull: g.getBoundingClientRect().width > slot.width * 0.9 };
+  });
+  check("Results inside a result: hidden variants stay hidden (no thin stripes), the listing stays a normal tile, no pills on nested results",
+    nest.vTile && nest.vW < 320 && nest.vH < 900 && nest.variantsHidden && nest.nestedBadges === 0 && nest.outerBadges, JSON.stringify(nest));
+  check("…and a block showing several products side by side keeps the full width", nest.gGroup && nest.gFull, JSON.stringify(nest));
   // Phone layout (no filter column; the box sits above the results)
   await p.setViewportSize({ width: 390, height: 800 });
   await p.goto("https://www.amazon.com/s?k=baguette+tray");

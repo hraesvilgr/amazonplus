@@ -405,19 +405,19 @@ html.dsa-tiles .s-main-slot {
   html.dsa-tiles .s-main-slot { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; gap: 8px 6px; }
 }
 html.dsa-tiles .s-main-slot > * { grid-column: 1 / -1; min-width: 0; }
-html.dsa-tiles .s-main-slot > div[data-component-type="s-search-result"] {
+html.dsa-tiles .s-main-slot > .dsa-tile {
   grid-column: auto;
   width: auto !important;
   max-width: none !important;
   padding: 0 !important;
   margin: 0 !important;
 }
-html.dsa-tiles .s-main-slot > div[data-component-type="s-search-result"] > .sg-col-inner { height: 100%; padding: 0 !important; margin: 0 !important; }
-html.dsa-tiles div[data-component-type="s-search-result"] .s-widget-container,
-html.dsa-tiles div[data-component-type="s-search-result"] .s-card-container,
-html.dsa-tiles div[data-component-type="s-search-result"] .s-card-container > .a-section { height: 100%; box-sizing: border-box; }
-html.dsa-tiles div[data-component-type="s-search-result"] .puisg-row { flex-direction: column; flex-wrap: nowrap; margin: 0 !important; width: 100% !important; }
-html.dsa-tiles div[data-component-type="s-search-result"] .puisg-col {
+html.dsa-tiles .s-main-slot > .dsa-tile > .sg-col-inner { height: 100%; padding: 0 !important; margin: 0 !important; }
+html.dsa-tiles .dsa-tile .s-widget-container:not(.dsa-tile div[data-component-type="s-search-result"] *),
+html.dsa-tiles .dsa-tile .s-card-container:not(.dsa-tile div[data-component-type="s-search-result"] *),
+html.dsa-tiles .dsa-tile .s-card-container > .a-section:not(.dsa-tile div[data-component-type="s-search-result"] *) { height: 100%; box-sizing: border-box; }
+html.dsa-tiles .dsa-tile .puisg-row:not(.dsa-tile div[data-component-type="s-search-result"] *) { flex-direction: column; flex-wrap: nowrap; margin: 0 !important; width: 100% !important; }
+html.dsa-tiles .dsa-tile .puisg-col:not(.dsa-tile div[data-component-type="s-search-result"] *) {
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
@@ -427,9 +427,9 @@ html.dsa-tiles div[data-component-type="s-search-result"] .puisg-col {
 }
 /* Every tile's photo gets the same box, and Amazon's "Best Seller" / "Overall Pick" label sits over
    its top-left corner instead of above it, so titles and prices line up across a row. */
-html.dsa-tiles div[data-component-type="s-search-result"] .puisg-col-inner { position: relative; }
-html.dsa-tiles div[data-component-type="s-search-result"] .s-list-status-badge-container,
-html.dsa-tiles div[data-component-type="s-search-result"] .puis-status-badge-container {
+html.dsa-tiles .dsa-tile .puisg-col-inner:not(.dsa-tile div[data-component-type="s-search-result"] *) { position: relative; }
+html.dsa-tiles .dsa-tile .s-list-status-badge-container:not(.dsa-tile div[data-component-type="s-search-result"] *),
+html.dsa-tiles .dsa-tile .puis-status-badge-container:not(.dsa-tile div[data-component-type="s-search-result"] *) {
   position: absolute !important;
   top: 4px;
   left: 0;
@@ -438,21 +438,21 @@ html.dsa-tiles div[data-component-type="s-search-result"] .puis-status-badge-con
   height: auto !important;
   margin: 0 !important;
 }
-html.dsa-tiles div[data-component-type="s-search-result"] .s-product-image-container {
+html.dsa-tiles .dsa-tile .s-product-image-container:not(.dsa-tile div[data-component-type="s-search-result"] *) {
   height: 206px !important;
   box-sizing: border-box;
   overflow: hidden;
   padding: 26px 0 0 !important;
 }
-html.dsa-tiles div[data-component-type="s-search-result"] .s-product-image-container img.s-image {
+html.dsa-tiles .dsa-tile .s-product-image-container img.s-image:not(.dsa-tile div[data-component-type="s-search-result"] *) {
   max-height: 180px !important;
   width: auto !important;
   max-width: 100% !important;
   margin: 0 auto;
   display: block;
 }
-html.dsa-tiles div[data-component-type="s-search-result"] h2 { font-size: 14px !important; line-height: 1.35 !important; }
-html.dsa-tiles div[data-component-type="s-search-result"] [data-cy="title-recipe"] { padding-right: 0 !important; }
+html.dsa-tiles .dsa-tile h2:not(.dsa-tile div[data-component-type="s-search-result"] *) { font-size: 14px !important; line-height: 1.35 !important; }
+html.dsa-tiles .dsa-tile [data-cy="title-recipe"]:not(.dsa-tile div[data-component-type="s-search-result"] *) { padding-right: 0 !important; }
 html.dsa-tiles .dsa-found { float: none; width: auto; max-width: none; margin: 4px 0 6px; }
 
 /* ---------- tidier result cards ----------
