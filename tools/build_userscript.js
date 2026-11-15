@@ -1,4 +1,4 @@
-// Builds dist/disenshittify-amazon.user.js — the same extension as a single userscript
+// Builds dist/AmazonPlus.user.js — the same extension as a single userscript
 // for Violentmonkey / Tampermonkey / Greasemonkey (no Mozilla signing needed).
 // Run: node tools/build_userscript.js
 const fs = require("fs");
@@ -51,7 +51,7 @@ const css = `(function () {
 // with the wrong text encoding (a mangled character inside a regex breaks the whole script).
 const toAscii = str => str.replace(/[^\x00-\x7f]/g, ch =>
   "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
-const out = path.join(root, "dist", "disenshittify-amazon.user.js");
+const out = path.join(root, "dist", "AmazonPlus.user.js");
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, toAscii(header + "\n" + css + "\n" + js));
 console.log("wrote", out, fs.statSync(out).size, "bytes");

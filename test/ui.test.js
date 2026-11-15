@@ -8,7 +8,7 @@ const { chromium } = require("playwright");
 
 const root = path.join(__dirname, "..");
 const fixture = require("./fixtures/baguette-tray.json");
-const userscript = fs.readFileSync(path.join(root, "dist", "disenshittify-amazon.user.js"), "utf8");
+const userscript = fs.readFileSync(path.join(root, "dist", "AmazonPlus.user.js"), "utf8");
 // The price scan is switched off in this build (config: priceCheck.enabled false) until it's fixed;
 // its tests still run, against a copy with it switched on.
 const scanOff = /priceCheck: \{[^}]*?enabled: false,/.test(userscript);

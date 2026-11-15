@@ -2,7 +2,7 @@
 
 *(Formerly "Disenshittify Amazon".)*
 
-**[⬇ Install](https://github.com/hraesvilgr/amazonplus/raw/main/dist/disenshittify-amazon.user.js)** — needs the [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/) browser extension. Click the link, then **Install**.
+**[⬇ Install](https://github.com/hraesvilgr/amazonplus/raw/main/dist/AmazonPlus.user.js)** — needs the [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/) browser extension. Click the link, then **Install**.
 
 [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K4R529MTQE)
 
@@ -77,7 +77,7 @@ Turning it off puts the page back the way Amazon served it, layout included. The
 
 ## Install
 
-**Userscript (no signing needed):** install Tampermonkey or Violentmonkey, then open the **[Install](https://github.com/hraesvilgr/amazonplus/raw/main/dist/disenshittify-amazon.user.js)** link and click **Install**. (Or create a new script and paste in `dist/disenshittify-amazon.user.js` by hand.) Reload Amazon afterwards. Rebuild it with `node tools/build_userscript.js` after changing anything in `src/`, and raise the version in `manifest.json` (the userscript's `@version` comes from it) so installed copies pick up the update.
+**Userscript (no signing needed):** install Tampermonkey or Violentmonkey, then open the **[Install](https://github.com/hraesvilgr/amazonplus/raw/main/dist/AmazonPlus.user.js)** link and click **Install**. (Or create a new script and paste in `dist/AmazonPlus.user.js` by hand.) Reload Amazon afterwards. Rebuild it with `node tools/build_userscript.js` after changing anything in `src/`, and raise the version in `manifest.json` (the userscript's `@version` comes from it) so installed copies pick up the update.
 
 **Temporary add-on (for testing)**
 
@@ -154,7 +154,7 @@ src/pricecheck.js      model numbers and identical-item matching for the price s
 src/content.js         toggle, scraping, colouring, sorting, restore, price scan
 src/styles.css         injected styles
 tools/train_bigrams.py rebuilds src/bigrams.js from local English text
-tools/build_userscript.js  builds dist/disenshittify-amazon.user.js (ASCII-only)
+tools/build_userscript.js  builds dist/AmazonPlus.user.js (ASCII-only)
 test/                  captured "baguette tray" results page + hand ratings
 ```
 

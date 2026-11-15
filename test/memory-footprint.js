@@ -5,7 +5,7 @@ const path = require("path");
 const { chromium } = require("playwright");
 const root = path.join(__dirname, "..");
 const { page: html, GM_SHIM } = require("./standin.js");
-const userscript = fs.readFileSync(path.join(root, "dist/disenshittify-amazon.user.js"), "utf8");
+const userscript = fs.readFileSync(path.join(root, "dist/AmazonPlus.user.js"), "utf8");
 
 (async () => {
   const browser = await chromium.launch();
