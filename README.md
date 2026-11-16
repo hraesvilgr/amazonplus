@@ -18,6 +18,9 @@ A userscript (and Firefox extension) for Amazon search results that adds an **Am
 - **New Sort options:** while the toggle is on, Amazon's own Sort by menu gets two extra entries:
   - **AmazonPlus: Trust** — most trusted first (a fresh search shows this by default)
   - **AmazonPlus: $/count** — cheapest per unit first
+- **Movable box:** on desktop, drag the AmazonPlus box anywhere by any part that isn't a button; it stays put there as the page scrolls, on every results page. Double-click it to put it back in the left column. On phones, drag the shrunk logo
+- **Less sales clutter on product pages:** hides the "-41%" and "Lowest price in 30 days" badges, crossed-out list prices, monthly-payment plans, Store Card offers, business-pricing and "Join Prime" delivery lines, and the Prime and Amazon Business sign-up boxes. Click the a+ bug in the photo's top-left corner to bring them back (the bug turns grey); click again to hide them. Drag the bug anywhere to move it; it stays there
+- **Less clutter in the cart:** hides the Store Card offer above the cart and the Join Prime box under Proceed to checkout
 - **New-version notice:** once a day, the userscript checks GitHub for a newer version; if there is one, a "New version available" link to install it appears at the top of the box until you install it or tap its ✕
 
 **Scan for off-Amazon prices:** this is experimental and limited in capacity so far. A box below Brands, titled "Scan off-Amazon prices", starts a scan of each listing on the search results page, as it comes into view, that has a manufacturer model number, and attempts to look them up in [UPCitemdb](https://www.upcitemdb.com)'s product database one at a time. If an identical item is sold elsewhere — the same model number with nothing else bundled, new, in stock, by a US store other than Amazon or eBay, at a price UPCitemdb has seen in the last 60 days — the cheapest appears in a blue box beside the Amazon price.
@@ -136,7 +139,7 @@ test/                  captured "baguette tray" results page + hand ratings
 ```
 node tools/test.js                 # build, then everything below (scoring and page tests side by side)
 node tools/test.js --only=phone    # build, then one page-test section (toggle sorts product media scan
-                                   #   float tiles gm4 mobileproduct contrast page2 tidy nested banner phone chips off)
+                                   #   float tiles gm4 mobileproduct contrast page2 tidy nested banner phone chips update clutter drag off)
 node test/score.test.js            # scoring vs. hand ratings
 node test/score.test.js --verbose  # every listing with its reasons
 node test/memory.test.js           # learning across several searches

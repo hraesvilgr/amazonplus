@@ -3,7 +3,7 @@
 // Tampermonkey's GM_getValue / GM_setValue are emulated on top of localStorage.
 // Run: node test/ui.test.js [screenshot-dir] [--only=section,section]
 // Sections: toggle sorts product media scan float tiles gm4 mobileproduct contrast page2 tidy
-// nested banner phone chips update off. --only runs just those, each from a fresh page with AmazonPlus on
+// nested banner phone chips update clutter drag off. --only runs just those, each from a fresh page with AmazonPlus on
 // (toggle and sorts start off; quick checks while working on one feature); the full run is what's done before a release.
 const fs = require("fs");
 const path = require("path");
@@ -1107,6 +1107,203 @@ const products = require("./fixtures/products-2026-10-28.json");
   if (shotDir) await p.screenshot({ path: path.join(shotDir, "update-phone.png"), clip: { x: 0, y: 0, width: 390, height: 260 } });
   await p.setViewportSize({ width: 1400, height: 1000 });
   await p.evaluate(() => { localStorage.removeItem("gm:dsaUpdate"); sessionStorage.clear(); });
+  }
+  if (await section("clutter")) {
+  // Product page and cart: Amazon's sale badges, list prices and sign-up offers hidden while AmazonPlus
+  // is on; the a+ bug above the photo shows them again (bug in grey), and the choice is kept.
+  const DP = `<!doctype html><html><head><meta charset="utf-8"><title>Amazon.com: WeatherTech CargoTech</title></head><body style="margin:0;font:14px Arial">
+<div id="navbar" style="height:60px;background:#131921"></div>
+<div id="wayfinding-breadcrumbs_feature_div" style="padding:8px 30px"><ul style="margin:0;padding:0;list-style:none;display:flex;gap:8px"><li><a href="#">Automotive</a></li><li><a href="#">Trunk Organizers</a></li></ul></div>
+<div id="dp" class="automotive en_US"><div id="ppd" style="display:flex;gap:20px;padding:40px 30px 0">
+ <div id="leftCol" style="width:600px;display:flex;gap:20px"><div id="altImages" style="width:50px;height:400px;background:#ddd"></div><div id="imageBlock" style="flex:1"><div id="main-image-container"><div style="width:520px;height:500px;background:#eee"></div></div></div></div>
+ <div id="centerCol" style="width:380px">
+  <div id="bylineInfo_feature_div"><a id="bylineInfo" href="/stores/WeatherTech/page/1">Visit the WeatherTech Store</a></div>
+  <div id="titleSection"><h1 id="title"><span id="productTitle">WeatherTech CargoTech - Automotive Trunk Organizer, Trunk Divider, Cargo Containment System for Car, SUV Trunk</span></h1></div>
+  <div id="averageCustomerReviews"><span id="acrPopover" title="4.4 out of 5 stars"></span><span id="acrCustomerReviewText">(976)</span></div>
+  <div id="corePriceDisplay_desktop_feature_div">
+   <div id="dealbadge"><span class="a-badge-label"><span class="a-badge-text">Lowest price in 30 days</span></span></div>
+   <div class="a-section aok-relative" id="pricerow"><span class="a-color-price savingsPercentage">-41%</span>
+    <span class="a-price priceToPay"><span class="a-offscreen">$49.90</span><span aria-hidden="true">$49.90</span></span> <span>($24.95 / count)</span></div>
+   <div class="a-section a-spacing-small" id="listrow"><span><span class="aok-relative"><span class="aok-offscreen">List Price: $83.95</span><span aria-hidden="true" class="a-size-small basisPrice">List Price: <span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">$83.95</span><span aria-hidden="true">$83.95</span></span></span></span></span></div>
+  </div>
+  <div id="installments"><span>Or <span class="a-price"><span aria-hidden="true">$25<sup>05</sup></span></span> /mo (3 mo) at 0% APR. <a href="#">Select plan</a></span></div>
+  <div id="storecard1"><span>Get a $10 Amazon Gift Card instantly upon approval for the Amazon Store Card. No annual fee.</span></div>
+  <div id="storecard2"><span><b>Unlock a $10 Gift Card:</b> Apply and pay <span class="a-text-strike">$59.99</span> <b>$49.99</b> if approved for <a href="#">Amazon Store Card</a></span></div>
+  <div id="feature-bullets"><ul><li><span class="a-list-item">CargoTech trunk organizer and storage is 100% Made in the USA</span></li><li><span class="a-list-item">UL approved; save $5 off replacement lids with the Store Card offer</span></li></ul></div>
+ </div>
+ <div id="rightCol" style="width:300px"><div id="desktop_buybox"><div id="buybox">
+  <div id="bizline"><span>Save up to 5% with business pricing.</span> <a href="#">Sign up for a free Amazon Business account</a></div>
+  <div id="mir-layout-DELIVERY_BLOCK">
+   <div id="mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE"><span><a href="#">Join Prime</a> to get FREE delivery <span class="a-text-bold">Tuesday, November 17</span>. Order within <span>6 hrs 15 mins</span></span></div>
+   <div id="mir-layout-DELIVERY_BLOCK-slot-SECONDARY_DELIVERY_MESSAGE_LARGE"><span>Or Non-members get FREE delivery <span class="a-text-bold">Friday, November 20</span></span></div>
+  </div>
+  <div id="availability"><span>In Stock</span></div>
+  <div offer-display-feature-name="desktop-fulfiller-info"><span class="offer-display-feature-text-message">Amazon</span></div>
+  <div offer-display-feature-name="desktop-merchant-info"><span class="offer-display-feature-text-message">MyConnects</span></div>
+  <input id="add-to-cart-button" type="submit" value="Add to cart"> <input id="buy-now-button" type="submit" value="Buy Now">
+  <div id="upsells">
+   <div id="olpLinkWidget"><div>Other sellers on Amazon</div><div>New &amp; Used (6) from $42.27 &amp; FREE Shipping.</div></div>
+   <div class="a-box" id="primecard"><div class="a-box-inner"><img alt="" width="60" height="20"><p>Enjoy fast, free delivery, exclusive deals, and award-winning movies &amp; TV shows.</p><a href="#">Join Prime</a></div></div>
+   <div class="a-box" id="bizcard"><div class="a-box-inner"><img alt="" width="60" height="20"><p><b>Save up to 5%</b> on this product with business-only pricing.</p><span class="a-button"><a href="#">Create a free account</a></span></div></div>
+   <div class="a-box" id="bizcard2"><div class="a-box-inner"><img alt="" width="60" height="20"><p><b>Save 40% up to $120</b> on your Amazon Business orders.</p><span class="a-button"><a href="#">Create a free account</a></span></div></div>
+   <div id="keep-item">Customers usually keep this item.</div>
+  </div>
+ </div></div></div>
+</div>
+<table id="productDetails_detailBullets_sections1"><tr><th>ASIN</th><td>B0CLUTTER1</td></tr></table></div></body></html>`;
+  await p.route("https://www.amazon.com/dp/B0CLUTTER1", r => r.fulfill({ contentType: "text/html", body: DP }));
+  const dpState = () => p.evaluate(() => {
+    const vis = q => { const n = document.querySelector(q); return !!n && n.getClientRects().length > 0; };
+    const bug = document.getElementById("dsa-pdp-bug");
+    const b = bug && bug.getBoundingClientRect(), crumbs = document.querySelector("#wayfinding-breadcrumbs_feature_div").getBoundingClientRect(),
+      byline = document.querySelector("#bylineInfo").getBoundingClientRect(), photo = document.querySelector("#leftCol").getBoundingClientRect();
+    return { badge: vis(".savingsPercentage"), list: vis("#listrow"), biz: vis("#bizline"), joinLine: vis("#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE"),
+      primeCard: vis("#primecard"), bizCard: vis("#bizcard"),
+      more: ["#dealbadge", "#installments", "#storecard1", "#storecard2", "#bizcard2"].filter(vis),
+      kept: ["#productTitle", ".priceToPay", "#mir-layout-DELIVERY_BLOCK-slot-SECONDARY_DELIVERY_MESSAGE_LARGE", "#olpLinkWidget", "#availability", "#add-to-cart-button", "#buy-now-button", "#feature-bullets li:nth-child(2)", "#dsa-product", "#keep-item"].filter(q => !vis(q)),
+      bug: !!bug, grey: !!bug && bug.classList.contains("dsa-off"),
+      bugPlace: !!b && (() => { const m = document.querySelector("#main-image-container").getBoundingClientRect();
+        return b.left >= m.left + 4 && b.left <= m.left + 12 && b.top >= m.top + 4 && b.top <= m.top + 12 && b.height >= 40; })() };
+  });
+  await p.goto("https://www.amazon.com/s?k=baguette+tray");
+  await p.evaluate(() => { localStorage.setItem("gm:dsaEnabled", "true"); localStorage.removeItem("gm:dsaPdpTidy"); });
+  const dpLoad = async () => { await p.goto("https://www.amazon.com/dp/B0CLUTTER1"); await p.evaluate(GM_SHIM);
+    await p.addScriptTag({ content: `(function(){${userscript}\n})();` }); await p.waitForSelector("#dsa-pdp-bug"); await p.waitForTimeout(100); };
+  await dpLoad();
+  let d = await dpState();
+  check("Product page, AmazonPlus on: the -41% badge, list price, business-pricing line, 'Join Prime to get FREE delivery' and the Prime and Business boxes are hidden",
+    !d.badge && !d.list && !d.biz && !d.joinLine && !d.primeCard && !d.bizCard, JSON.stringify(d));
+  check("…and so are 'Lowest price in 30 days', the monthly-payment plan, both kinds of Store Card offer and the other Business box", d.more.length === 0, JSON.stringify(d.more));
+  check("…while the title, price, non-member delivery date, stock, other sellers, buttons, bullets and AmazonPlus's panel stay", d.kept.length === 0, JSON.stringify(d.kept));
+  check("…and the a+ bug floats in colour in the main photo's top-left corner, right of the thumbnails", d.bug && !d.grey && d.bugPlace, JSON.stringify(d));
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "pdp-tidy.png"), clip: { x: 0, y: 0, width: 1400, height: 520 } });
+  await p.click("#dsa-pdp-bug"); await p.waitForTimeout(100);
+  d = await dpState();
+  check("Clicking the bug: it goes grey and everything comes back", d.grey && d.badge && d.list && d.biz && d.joinLine && d.primeCard && d.bizCard && d.more.length === 5 && d.kept.length === 0, JSON.stringify(d));
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "pdp-shown.png"), clip: { x: 0, y: 0, width: 1400, height: 520 } });
+  await dpLoad();
+  d = await dpState();
+  check("…and stays that way on the next product page; clicking again hides it all again", d.grey && d.badge && d.primeCard);
+  await p.click("#dsa-pdp-bug"); await p.waitForTimeout(100);
+  d = await dpState();
+  check("…(hidden again, bug in colour)", !d.grey && !d.badge && !d.primeCard && !d.joinLine && d.kept.length === 0, JSON.stringify(d));
+  // Dragging the bug: it moves, doesn't toggle, and keeps its place (from the photo's corner) on the next page
+  const bugBox = () => p.evaluate(() => { const b = document.getElementById("dsa-pdp-bug").getBoundingClientRect(), m = document.querySelector("#main-image-container").getBoundingClientRect();
+    return { x: Math.round(b.left - m.left), y: Math.round(b.top - m.top), cx: b.left + b.width / 2, cy: b.top + b.height / 2, grey: document.getElementById("dsa-pdp-bug").classList.contains("dsa-off") }; });
+  let bb = await bugBox();
+  await p.mouse.move(bb.cx, bb.cy); await p.mouse.down();
+  for (let i = 1; i <= 10; i++) await p.mouse.move(bb.cx + i * 20, bb.cy + i * 15);
+  await p.mouse.up(); await p.waitForTimeout(150);
+  let moved = await bugBox();
+  check("Dragging the bug moves it, without hiding or showing anything", Math.abs(moved.x - (bb.x + 200)) <= 2 && Math.abs(moved.y - (bb.y + 150)) <= 2 && moved.grey === bb.grey && !(await dpState()).badge,
+    JSON.stringify({ bb, moved }));
+  await p.waitForTimeout(800);   // and Amazon's page changing doesn't put it back
+  const still = await bugBox();
+  await dpLoad();
+  const again = await bugBox();
+  check("…it stays there, and on the next product page it's in the same place over the photo", still.x === moved.x && still.y === moved.y && Math.abs(again.x - moved.x) <= 1 && Math.abs(again.y - moved.y) <= 1, JSON.stringify({ moved, still, again }));
+  await p.click("#dsa-pdp-bug"); await p.waitForTimeout(100);
+  check("…and a plain click still shows everything", (await bugBox()).grey && (await dpState()).badge);
+  await p.click("#dsa-pdp-bug"); await p.waitForTimeout(100);
+  await p.evaluate(() => localStorage.removeItem("gm:dsaPdpBugAt"));
+  // Amazon adds the boxes late
+  await p.evaluate(() => { const n = document.getElementById("primecard"); const c = n.cloneNode(true); c.id = "latecard"; n.remove(); setTimeout(() => document.getElementById("upsells").appendChild(c), 50); });
+  await p.waitForTimeout(1000);
+  check("…including when Amazon adds a sign-up box after the page has loaded", await p.evaluate(() => !document.getElementById("latecard").getClientRects().length));
+  // Off: nothing hidden, no bug
+  await p.evaluate(() => localStorage.setItem("gm:dsaEnabled", "false"));
+  await p.goto("https://www.amazon.com/dp/B0CLUTTER1"); await p.evaluate(GM_SHIM); await p.addScriptTag({ content: `(function(){${userscript}\n})();` }); await p.waitForTimeout(300);
+  d = await dpState();
+  check("AmazonPlus off: product pages untouched, no bug", !d.bug && d.badge && d.list && d.biz && d.joinLine && d.primeCard && d.bizCard, JSON.stringify(d));
+  await p.evaluate(() => localStorage.setItem("gm:dsaEnabled", "true"));
+
+  // Cart
+  const CART = `<!doctype html><html><head><meta charset="utf-8"><title>Amazon.com Shopping Cart</title></head><body style="margin:0;font:14px Arial">
+<div id="a-page"><header id="navbar"><div id="nav-belt" style="height:60px;background:#131921"></div><div id="nav-main" style="height:40px;background:#232f3e"></div></header>
+<div id="sc-new-upsell" style="padding:12px 30px;background:#fff"><div class="a-row"><img alt="" width="60" height="38"><span>Get <b>$10 off</b> instantly upon approval for the Amazon Store Card.</span> <a href="#">Learn more</a></div></div>
+<div style="display:flex;gap:20px;padding:20px 30px">
+ <div id="sc-active-cart" style="flex:1"><h1>Shopping Cart</h1><form id="activeCartViewForm">
+  <div class="sc-list-item" data-asin="B0CLUTTER1"><span class="a-truncate-full">WeatherTech CargoTech trunk organizer</span> <span>$49.90</span> <div>Join Prime to get FREE delivery on this item</div></div>
+  <div id="sc-subtotal-label-activecart">Subtotal (1 item): $49.90</div></form></div>
+ <div id="rightcol" style="width:300px">
+  <div id="sc-buy-box"><div id="sc-subtotal-label-buybox">Subtotal (1 item):</div><span id="sc-subtotal-amount-buybox">$49.90</span>
+   <input name="proceedToRetailCheckout" type="submit" value="Proceed to checkout"></div>
+  <div id="primebox" style="margin-top:12px;border:1px solid #ddd"><div class="a-box-inner"><img alt="" width="60" height="20"><div>Get FREE delivery on this order and more with Prime.</div><a href="#">Join Prime</a></div></div>
+  <div id="sc-sfl">Saved for later (0 items)</div>
+ </div></div></div></body></html>`;
+  await p.route("https://www.amazon.com/gp/cart/view.html*", r => r.fulfill({ contentType: "text/html", body: CART }));
+  const cart = () => p.evaluate(() => { const vis = q => { const n = document.querySelector(q); return !!n && n.getClientRects().length > 0; };
+    return { card: vis("#sc-new-upsell"), prime: vis("#primebox"), kept: ["#navbar", "#nav-main", "#sc-active-cart", ".sc-list-item", ".sc-list-item div", "#sc-buy-box", '[name="proceedToRetailCheckout"]', "#sc-sfl"].filter(q => !vis(q)) }; });
+  await p.goto("https://www.amazon.com/gp/cart/view.html?ref_=nav_cart"); await p.evaluate(GM_SHIM);
+  await p.addScriptTag({ content: `(function(){${userscript}\n})();` }); await p.waitForTimeout(300);
+  let c = await cart();
+  check("Cart: the Store Card offer under the menus and the Join Prime box under Proceed to checkout are hidden; the cart, its items, checkout and Saved for later stay",
+    !c.card && !c.prime && c.kept.length === 0, JSON.stringify(c));
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "cart.png"), clip: { x: 0, y: 0, width: 1400, height: 380 } });
+  await p.evaluate(() => localStorage.setItem("gm:dsaEnabled", "false"));
+  await p.goto("https://www.amazon.com/gp/cart/view.html?ref_=nav_cart"); await p.evaluate(GM_SHIM);
+  await p.addScriptTag({ content: `(function(){${userscript}\n})();` }); await p.waitForTimeout(300);
+  c = await cart();
+  check("…and with AmazonPlus off, the cart is untouched", c.card && c.prime);
+  await p.evaluate(() => { localStorage.setItem("gm:dsaEnabled", "true"); localStorage.removeItem("gm:dsaPdpTidy"); localStorage.removeItem("gm:dsaPdpBugAt"); });
+  await load("baguette tray");   // back on a results page, as the next section expects
+  }
+  if (await section("drag")) {
+  // Desktop: drag the box by any part that isn't a control; it stays put in the window and the left
+  // column closes up; double-click puts it back. Phones: drag the floating box by its logo.
+  await p.evaluate(() => { localStorage.removeItem("gm:dsaPanelAt"); localStorage.removeItem("gm:dsaLogoAt"); localStorage.setItem("gm:dsaEnabled", "true"); });
+  await p.setViewportSize({ width: 1400, height: 1000 });
+  await load("baguette tray"); await p.waitForTimeout(200);
+  const box = () => p.evaluate(() => { const t = document.getElementById("dsa-toggle"), b = t.getBoundingClientRect(), sp = document.querySelector(".dsa-spot");
+    return { x: Math.round(b.left), y: Math.round(b.top), float: t.classList.contains("dsa-float"), spot: sp ? sp.offsetHeight : -1, on: t.querySelector(".dsa-main").checked,
+      st: (() => { const r = t.querySelector(".dsa-status").getBoundingClientRect(); return { x: r.left + 10, y: r.top + r.height / 2 }; })(),
+      next: Math.round(t.parentElement.querySelector(".dsa-spot ~ * :not(#dsa-toggle)") ? 0 : 0) }; });
+  const b0 = await box();
+  await p.mouse.move(b0.st.x, b0.st.y); await p.mouse.down();
+  for (let i = 1; i <= 10; i++) await p.mouse.move(b0.st.x + i * 40, b0.st.y + i * 25);
+  await p.mouse.up(); await p.waitForTimeout(200);
+  const b1 = await box();
+  check("Desktop: dragging the box moves it with the pointer, without switching anything", Math.abs(b1.x - (b0.x + 400)) <= 2 && Math.abs(b1.y - (b0.y + 250)) <= 2 && b1.on === b0.on, JSON.stringify({ b0, b1 }));
+  check("…it now floats there, and the left column closes up where it was", b1.float && b1.spot === 0, JSON.stringify(b1));
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "drag-desktop.png") });
+  await p.evaluate(() => window.scrollTo(0, 1500)); await p.waitForTimeout(300);
+  const b2 = await box();
+  check("…stays in the same place in the window while the page scrolls", b2.x === b1.x && b2.y === b1.y && b2.float, JSON.stringify(b2));
+  await load("baguette tray"); await p.waitForTimeout(300);
+  const b3 = await box();
+  check("…and on the next results page", Math.abs(b3.x - b1.x) <= 1 && Math.abs(b3.y - b1.y) <= 1 && b3.float, JSON.stringify(b3));
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(200);
+  const b4 = await box();
+  check("…its switch still works with a click", b4.on !== b3.on && b4.x === b3.x);
+  await p.click("#dsa-toggle .dsa-switch"); await p.waitForTimeout(200);
+  await p.mouse.dblclick((await box()).st.x, (await box()).st.y); await p.waitForTimeout(300);
+  const b5 = await box();
+  check("Double-clicking the box puts it back in its place", !b5.float && Math.abs(b5.x - b0.x) <= 1 && Math.abs(b5.y - b0.y) <= 1 && await p.evaluate(() => localStorage.getItem("gm:dsaPanelAt") === "null"), JSON.stringify({ b0, b5 }));
+
+  // Phones
+  await p.setViewportSize({ width: 390, height: 800 });
+  await load("baguette tray", `document.getElementById("s-refinements").remove(); document.querySelector(".wrap").style.display = "block";`);
+  await p.waitForTimeout(200);
+  await p.evaluate(() => window.scrollTo(0, 1200)); await p.waitForTimeout(400);
+  const lg = () => p.evaluate(() => { const t = document.getElementById("dsa-toggle"), r = t.querySelector(".dsa-logo").getBoundingClientRect();
+    return { x: Math.round(r.left), y: Math.round(r.top), cx: r.left + r.width / 2, cy: r.top + r.height / 2, mini: t.classList.contains("dsa-mini") }; });
+  const l0 = await lg();
+  await p.mouse.move(l0.cx, l0.cy); await p.mouse.down();
+  for (let i = 1; i <= 8; i++) await p.mouse.move(l0.cx + i * 25, l0.cy + i * 40);
+  await p.mouse.up(); await p.waitForTimeout(200);
+  const l1 = await lg();
+  check("Phone: dragging the shrunk logo moves it, and it stays shrunk (no tap)", l0.mini && l1.mini && Math.abs(l1.x - (l0.x + 200)) <= 2 && Math.abs(l1.y - (l0.y + 320)) <= 2, JSON.stringify({ l0, l1 }));
+  await p.evaluate(() => window.scrollTo(0, 1800)); await p.waitForTimeout(300);
+  const l2 = await lg();
+  await p.evaluate(() => document.querySelector("#dsa-toggle .dsa-logo").click()); await p.waitForTimeout(200);
+  const l3 = await lg();
+  check("…it stays there while scrolling, and a tap still opens the box", l2.x === l1.x && l2.y === l1.y && !l3.mini, JSON.stringify({ l1, l2, l3 }));
+  const fits = await p.evaluate(() => { const r = document.getElementById("dsa-toggle").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1; });
+  check("…the open box stays on screen", fits);
+  if (shotDir) await p.screenshot({ path: path.join(shotDir, "drag-phone.png") });
+  await p.evaluate(() => { document.querySelector("#dsa-toggle .dsa-logo").click(); localStorage.removeItem("gm:dsaLogoAt"); localStorage.removeItem("gm:dsaPanelAt"); });
+  await p.setViewportSize({ width: 1400, height: 1000 });
+  await load("baguette tray");
   }
   if (await section("off")) {
   // Turning AmazonPlus off also turns off product pages

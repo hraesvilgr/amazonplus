@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AmazonPlus",
-  "version": "0.13.1",
+  "version": "0.15.0",
   "description": "Rates Amazon search results by trustworthiness, tints them green to red, and sorts the junk to the bottom.",
   "icons": {
     "48": "icons/icon.svg",
@@ -20,7 +20,11 @@
         "https://www.amazon.com/gp/product/*",
         "https://amazon.com/dp/*",
         "https://amazon.com/*/dp/*",
-        "https://amazon.com/gp/product/*"
+        "https://amazon.com/gp/product/*",
+        "https://www.amazon.com/gp/cart/*",
+        "https://www.amazon.com/cart*",
+        "https://amazon.com/gp/cart/*",
+        "https://amazon.com/cart*"
       ],
       "js": [
         "src/config.js",

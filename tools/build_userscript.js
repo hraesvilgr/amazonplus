@@ -29,6 +29,10 @@ const header = `// ==UserScript==
 // @match        https://amazon.com/dp/*
 // @match        https://amazon.com/*/dp/*
 // @match        https://amazon.com/gp/product/*
+// @match        https://www.amazon.com/gp/cart/*
+// @match        https://www.amazon.com/cart*
+// @match        https://amazon.com/gp/cart/*
+// @match        https://amazon.com/cart*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest

@@ -123,6 +123,12 @@
   pointer-events: none;
 }
 #dsa-toggle.dsa-mini > :not(.dsa-logo) { visibility: hidden; }
+/* Dragging: the box (desktop) or its logo (phones) can be moved; the cursor says so. */
+#dsa-toggle:not(.dsa-inline) { cursor: grab; touch-action: pinch-zoom; }
+#dsa-toggle:not(.dsa-inline) :is(input, button, a, label, select, summary, .dsa-scan, .dsa-pref, .dsa-switch) { cursor: pointer; }
+#dsa-toggle[data-dragging] { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+#dsa-toggle.dsa-float .dsa-logo { touch-action: none; }
+#dsa-toggle .dsa-logo img { -webkit-user-drag: none; }
 #dsa-toggle.dsa-mini .dsa-logo { pointer-events: auto; cursor: pointer; }
 #dsa-toggle.dsa-mini .dsa-logo img { filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45)); }
 #dsa-toggle.dsa-mini.dsa-off .dsa-logo img { filter: grayscale(1) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45)); }
@@ -443,6 +449,16 @@
 .dsa-dark .dsa-btn.dsa-on.dsa-trust { background: #2e7d32; color: #fff; }
 .dsa-dark .dsa-btn.dsa-on.dsa-block { background: #b71c1c; color: #fff; }
 .dsa-dark .dsa-product { color: #e3e6e6; }
+/* Product pages: Amazon's sale badges, list prices and sign-up offers, hidden while the a+ bug is in colour. */
+html.dsa-pdp-tidy .dsa-pdp-clutter { display: none !important; }
+#dsa-pdp-bug {
+  position: absolute; z-index: 50; height: 28px; margin: 0; padding: 0; border: 0; background: none; cursor: pointer; line-height: 0;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+#dsa-pdp-bug img { display: block; height: 100%; width: auto; pointer-events: none; }
+#dsa-pdp-bug[data-dragging] { cursor: grabbing; filter: drop-shadow(0 3px 6px rgba(0,0,0,.35)); }
+#dsa-pdp-bug.dsa-off img { filter: grayscale(1); opacity: .75; }
+#dsa-pdp-bug:focus-visible { outline: 2px solid #007185; outline-offset: 2px; border-radius: 4px; }
 .dsa-dark .dsa-product-error { --dsa-bg: #2b3134; --dsa-edge: #8a9093; --dsa-ink: #b9bdbd; }
 
 /* ---------- tile view (html.dsa-tiles) ----------

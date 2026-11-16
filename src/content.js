@@ -26,6 +26,10 @@
   const KEY_SCAN_FOLD = "dsaScanFold";        // true: the scan box is folded down to its title
   const KEY_PRIME = "dsaPrime";               // true: you have Prime (cards show Prime delivery and prices)
   const KEY_ECO = "dsaEco";                   // true: show sustainability badges on cards
+  const KEY_PANEL_AT = "dsaPanelAt";          // desktop: where the box was dragged to (window position); null: its place
+  const KEY_LOGO_AT = "dsaLogoAt";            // phones: where the shrunk logo's box was dragged to
+  const KEY_PDP_BUG = "dsaPdpBugAt";          // where the a+ bug was dragged to: {x, y} from the main photo's top-left
+  const KEY_PDP_TIDY = "dsaPdpTidy";          // false: product pages keep Amazon's sales clutter (the a+ bug, greyed)
   const KEY_SCAN_FOLD_VER = "dsaScanFoldVer"; // the version that fold choice was made in (new version: folded again)
   // This version: written in by the userscript build; the add-on reads it from its manifest.
   const VERSION = (() => {
@@ -690,8 +694,165 @@
     return best;
   }
 
+  // ---------- Product pages: hiding the sales clutter ----------
+  // While AmazonPlus is on, product pages lose: the "-41%" and "Lowest price in 30 days" badges, the
+  // crossed-out List / Typical price, monthly-payment plans, Store Card offers, "Save up to 5% with business pricing", "Join Prime to get FREE delivery …" (the non-member
+  // date stays), and the Prime and Amazon Business sign-up boxes. The a+ bug in the photo's top-left corner
+  // turns this off (bug in grey, everything back) and on again; the choice is kept.
+  let pdpTidy = true;
+  let pdpBugAt = null;          // null: the photo's top-left corner (8, 8)
+  const squash = t => (t || "").replace(/\s+/g, " ").trim();
+  // Things a hidden block must never take with it.
+  const PDP_KEEP = "#add-to-cart-button, #buy-now-button, #productTitle, .priceToPay, .apexPriceToPay, #dsa-product, " +
+    "#mir-layout-DELIVERY_BLOCK-slot-SECONDARY_DELIVERY_MESSAGE_LARGE, #olpLinkWidget_feature_div, #olpLinkWidget, #availability, #tabular-buybox";
+  const keepsWith = keep => n => n.matches(keep) || !!n.querySelector(keep);
+  const keepsSomething = keepsWith(PDP_KEEP);
+  // From a piece of text, the block it belongs to: up until the block's text reads as `whole`, then on
+  // through wrappers that add almost nothing (a logo, a button label), stopping at anything bigger.
+  function clutterBlock(node, whole, scope, keeps = keepsSomething, extra = 30) {
+    let cur = node.parentElement;
+    for (let i = 0; i < 6 && cur && cur !== scope && !whole.test(squash(cur.textContent)); i++) {
+      if (keeps(cur.parentElement)) break;
+      cur = cur.parentElement;
+    }
+    if (!cur || cur === scope || keeps(cur)) return null;
+    while (cur.parentElement && cur.parentElement !== scope && !keeps(cur.parentElement)
+           && squash(cur.parentElement.textContent).length - squash(cur.textContent).length <= extra) cur = cur.parentElement;
+    return cur;
+  }
+  const PDP_CLUTTER = [
+    { find: /business pricing/i, whole: /business pricing.*Amazon Business account/i },
+    { find: /to get FREE delivery/i, whole: /^Join Prime to get FREE delivery/i, needs: /Join Prime/i },
+    { find: /Enjoy fast, free delivery, exclusive deals/i, whole: /Enjoy fast, free delivery, exclusive deals.*Join Prime/i },
+    { find: /Create a free account/i, whole: /business.*Create a free account/i },          // the Amazon Business box, whatever its offer
+    { find: /Lowest price in \d+ days/i, whole: /Lowest price in \d+ days/i },                // red deal badges
+    { find: /0% APR/i, whole: /\/mo.*0% APR/i },                                               // "Or $25.05/mo (3 mo) at 0% APR. Select plan"
+    { find: /approv/i, whole: /(Gift Card|off|\$\d).*approv|approv.*(Store Card|Visa|Card)/i },  // Store Card / Visa sign-up offers
+  ];
+  // Amazon's own containers for the same offers, where they have them
+  const PDP_CLUTTER_IDS = "#dealBadge_feature_div, #dealBadgeSupportingText_feature_div, #installmentCalculator_feature_div, " +
+    "#issuancePriceblockAmabot_feature_div, #issuancePriceblockAmabot_csm_feature_div";
+  function markProductClutter() {
+    const scope = document.querySelector("#ppd") || document.querySelector("#dp") || document.body;
+    const found = new Set();
+    for (const n of scope.querySelectorAll(PDP_CLUTTER_IDS)) if (!keepsSomething(n)) found.add(n);
+    // Sale badge and crossed-out prices next to the price
+    for (const n of scope.querySelectorAll('[id^="corePrice"] .savingsPercentage, #apex_desktop .savingsPercentage')) found.add(n);
+    for (const n of scope.querySelectorAll('[id^="corePrice"] .basisPrice, #apex_desktop .basisPrice, [id^="corePrice"] [data-a-strike="true"], #apex_desktop [data-a-strike="true"]')) {
+      const row = n.closest("tr");
+      const box = row || n.closest(".a-section") || n;
+      found.add(keepsSomething(box) ? (n.closest(".basisPrice") || n) : box);
+    }
+    // Sign-up lines and boxes, found by their wording
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+      // (never the product's own words: title, bullets, overview, highlights)
+      if (t.parentElement && t.parentElement.closest("#dsa-product, script, style, noscript, #titleSection, #title_feature_div, " +
+        "#feature-bullets, #productOverview_feature_div, #productFactsDesktop_feature_div, #productDescription")) continue;
+      for (const c of PDP_CLUTTER) {
+        if (!c.find.test(t.nodeValue)) continue;
+        const block = clutterBlock(t, c.whole, scope);
+        if (block && (!c.needs || c.needs.test(block.textContent))) found.add(block);
+      }
+    }
+    for (const n of found) n.classList.add("dsa-pdp-clutter");
+  }
+  function placePdpBug() {
+    let bug = document.getElementById("dsa-pdp-bug");
+    const photo = document.querySelector("#leftCol, #imageBlock_feature_div, #imageBlock, #main-image-container");
+    if (!photo) { if (bug) bug.remove(); return; }
+    if (!bug) {
+      bug = el("button", { id: "dsa-pdp-bug", type: "button", on: { click: e => {
+        e.preventDefault(); e.stopPropagation();
+        if (bug.dataset.dragged) { delete bug.dataset.dragged; return; }   // the end of a drag isn't a click
+        pdpTidy = !pdpTidy; storeSet(KEY_PDP_TIDY, pdpTidy); renderPdpTidy();
+      } } }, el("img", { src: globalThis.DSA_LOGO || "", alt: "", draggable: "false" }));
+      document.body.appendChild(bug);
+      dragPdpBug(bug);
+    }
+    bug.classList.toggle("dsa-off", !pdpTidy);
+    bug.setAttribute("aria-pressed", String(pdpTidy));
+    const tip = pdpTidy ? "AmazonPlus is hiding sale badges, list prices and sign-up offers. Click to show them."
+                        : "AmazonPlus is showing Amazon's sale badges, list prices and sign-up offers. Click to hide them.";
+    bug.title = tip; bug.setAttribute("aria-label", tip);
+    // In the top-left corner of the main photo (right of the thumbnails), clear of its edge, or
+    // wherever it was last dragged to (kept as a distance from that corner, so it follows the photo).
+    if (bug.dataset.dragging) return;
+    const r = pdpPhotoBox(photo);
+    const at = pdpBugAt || { x: 8, y: 8 };
+    bug.style.height = "44px";
+    bug.style.left = Math.round(r.left + at.x + scrollX) + "px";
+    bug.style.top = Math.round(r.top + at.y + scrollY) + "px";
+  }
+  function pdpPhotoBox(photo) {
+    const visible = n => n && n.getClientRects().length && n.getBoundingClientRect().width > 40;
+    const main = ["#main-image-container", "#imgTagWrapperId", "#imageBlock"].map(q => document.querySelector(q)).find(visible)
+      || photo || document.querySelector("#leftCol, #imageBlock_feature_div, #imageBlock, #main-image-container");
+    return main.getBoundingClientRect();
+  }
+  // Drag the bug anywhere (mouse, pen or finger); a press that moves under 5px is still a click.
+  function dragPdpBug(bug) {
+    const at = () => { const b = bug.getBoundingClientRect(); return { x: b.left, y: b.top }; };
+    draggable(bug, {
+      start: at,
+      move: (x, y) => {
+        const b = bug.getBoundingClientRect();
+        bug.style.left = Math.round(Math.min(Math.max(x, 0), document.documentElement.clientWidth - b.width) + scrollX) + "px";
+        bug.style.top = Math.round(Math.min(Math.max(y, 0), innerHeight - b.height) + scrollY) + "px";
+      },
+      end: () => {
+        const b = bug.getBoundingClientRect(), r = pdpPhotoBox();
+        pdpBugAt = { x: Math.round(b.left - r.left), y: Math.round(b.top - r.top) };
+        storeSet(KEY_PDP_BUG, pdpBugAt);
+      },
+    });
+  }
+  function renderPdpTidy() {
+    document.documentElement.classList.toggle("dsa-pdp-tidy", enabled && pdpTidy);
+    if (enabled) placePdpBug();
+  }
+  function tidyProductPage() {
+    const on = enabled && PRODUCT.isProductPage(location) && !PRODUCT.isMediaPage(document);
+    if (!on) {
+      document.documentElement.classList.remove("dsa-pdp-tidy");
+      const bug = document.getElementById("dsa-pdp-bug"); if (bug) bug.remove();
+      return;
+    }
+    markProductClutter();
+    renderPdpTidy();
+  }
+  // ---------- Cart: the Store Card offer above the cart, and Join Prime under Proceed to checkout ----------
+  const isCartPage = loc => /^\/(gp\/cart\/|cart(\/|$))/.test(loc.pathname);
+  const CART_KEEP = "#sc-active-cart, #activeCartViewForm, .sc-list-item, [data-name=\"Active Items\"], #sc-buy-box, " +
+    "[name=\"proceedToRetailCheckout\"], #sc-buy-box-ptc-button, #sc-subtotal-amount-buybox, #sc-subtotal-label-buybox, #navbar, #nav-main, #nav-belt, header";
+  const cartKeeps = keepsWith(CART_KEEP);
+  const CART_CLUTTER = [
+    { find: /upon approval/i, whole: /upon approval/i },
+    { find: /Join Prime|Try Prime/i, whole: /Join Prime|Try Prime/i },
+  ];
+  function tidyCart() {
+    const on = enabled && isCartPage(location);
+    document.documentElement.classList.toggle("dsa-pdp-tidy", on);
+    if (!on) return;
+    const scope = document.querySelector("#a-page") || document.body;
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+      // (lines inside the cart's own items are left alone)
+      if (!t.parentElement || t.parentElement.closest("script, style, noscript, #navbar, header, .sc-list-item")) continue;
+      for (const c of CART_CLUTTER) {
+        if (!c.find.test(t.nodeValue)) continue;
+        const block = clutterBlock(t, c.whole, scope, cartKeeps, 80);
+        if (block) block.classList.add("dsa-pdp-clutter");
+      }
+    }
+  }
+
+  let pdpResize = 0;
+  addEventListener("resize", () => { cancelAnimationFrame(pdpResize); pdpResize = requestAnimationFrame(() => { if (document.getElementById("dsa-pdp-bug")) placePdpBug(); }); });
+
   function runProductPage(reopen) {
     const old = document.getElementById("dsa-product");
+    tidyProductPage();
     if (!enabled) { if (old) old.remove(); return; }
     const anchor = document.querySelector("#titleSection, #title_feature_div, #title");
     if (!anchor || !PRODUCT.productTitle(document)) return;
@@ -920,6 +1081,49 @@
   // Prime on: the Prime delivery line and Prime prices; the Non-Prime line is hidden.
   // Eco off: sustainability badges hidden (with their leaf); on: shown. Classes on <html>; styles.css.
   let hasPrime = false, showEco = false;
+  let panelAt = null, logoAt = null;
+
+  // Drag something with mouse, pen or finger. A press that moves under 5px stays a click; after a
+  // real drag, the click that follows is swallowed (handle.dataset.dragged), so it doesn't toggle anything.
+  //   o.can(e): whether this press may start a drag; o.start(): the dragged element's window {x, y};
+  //   o.move(x, y) while dragging; o.end(x, y) once, at the end.
+  function draggable(handle, o) {
+    let st = null;
+    // Moves are followed on the whole page: a quick first move can already be off the handle.
+    const move = e => {
+      if (!st || e.pointerId !== st.id) return;
+      if (!st.on) {
+        if (Math.hypot(e.clientX - st.x, e.clientY - st.y) < 5) return;
+        st.on = true; st.from = o.start();
+        try { getSelection().removeAllRanges(); } catch (err) { /* nothing selected */ }
+        handle.dataset.dragging = "1";
+      }
+      e.preventDefault();
+      st.last = { x: st.from.x + e.clientX - st.x, y: st.from.y + e.clientY - st.y };
+      o.move(st.last.x, st.last.y);
+    };
+    const end = e => {
+      if (!st || e.pointerId !== st.id) return;
+      const was = st; st = null;
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointerup", end, true);
+      document.removeEventListener("pointercancel", end, true);
+      if (!was.on) return;
+      delete handle.dataset.dragging;
+      handle.dataset.dragged = "1";
+      setTimeout(() => { delete handle.dataset.dragged; }, 0);
+      o.end(was.last.x, was.last.y);
+    };
+    handle.addEventListener("pointerdown", e => {
+      if (e.button !== 0 || (o.can && !o.can(e))) return;
+      st = { x: e.clientX, y: e.clientY, id: e.pointerId, on: false };
+      document.addEventListener("pointermove", move, true);
+      document.addEventListener("pointerup", end, true);
+      document.addEventListener("pointercancel", end, true);
+    });
+    // A drag that ended over a link mustn't follow it.
+    handle.addEventListener("click", e => { if (handle.dataset.dragged) { e.preventDefault(); e.stopPropagation(); delete handle.dataset.dragged; } }, true);
+  }
   function setPrefs(prime, eco, save) {
     hasPrime = !!prime; showEco = !!eco;
     const root = document.documentElement;
@@ -1801,7 +2005,7 @@
           flaskIcon())))),
       // Phones: while the box floats it shrinks to this logo; a tap opens it again.
       el("button", { type: "button", class: "dsa-logo", "aria-label": "Open AmazonPlus" },
-        el("img", { src: globalThis.DSA_LOGO || "", alt: "AmazonPlus",
+        el("img", { src: globalThis.DSA_LOGO || "", alt: "AmazonPlus", draggable: "false",
           // If the page won't show embedded images, a text "a+" mark stands in.
           on: { error: e => e.target.replaceWith(el("span", { class: "dsa-logo-text" }, "a", el("b", {}, "+"))) } })));
     wrap.classList.toggle("dsa-off", !enabled);      // the logo shows in grey while AmazonPlus is off
@@ -1867,6 +2071,7 @@
     };
     toggle.querySelector(".dsa-logo").addEventListener("click", e => {
       e.preventDefault();
+      if (e.currentTarget.dataset.dragged) return;             // the end of a drag
       if (!toggle.classList.contains("dsa-float")) return;     // in its place, the logo is just a logo
       expanded = !expanded;                                     // opens the box; tapped again, closes it
       mini(); place();
@@ -1875,17 +2080,33 @@
       if (!expanded || toggle.contains(e.target)) return;
       expanded = false; mini(); place();
     }, true);
+    const inlineNow = () => toggle.classList.contains("dsa-inline");
+    // Dragged somewhere: desktop, the whole box (it then stays put in the window, page scrolling
+    // under it, and gives its place in the left column back); phones, the floating box by its logo.
+    const pin = () => inlineNow() ? logoAt : panelAt;
     const place = () => {
       if (!toggle.classList.contains("dsa-float")) return;
       const r = spot.getBoundingClientRect();
       // Phones: as far from the left edge of the screen as from the top (8px).
-      const inline = toggle.classList.contains("dsa-inline");
-      const left = inline ? Math.max(r.left, 8) : r.left;
-      toggle.style.left = left + "px";
+      const inline = inlineNow(), at = pin();
+      let left = inline ? Math.max(r.left, 8) : r.left;
+      if (at) left = at.x;
       // Phones: as narrow as its contents allow (styles.css), never past the right edge.
-      if (inline) { toggle.style.width = ""; toggle.style.maxWidth = Math.min(360, innerWidth - left - 8) + "px"; }
+      if (inline) { toggle.style.width = ""; toggle.style.maxWidth = Math.min(360, innerWidth - 16) + "px"; }
       else toggle.style.width = r.width + "px";
-      const top = Math.round(headerBottom(r.left + r.width / 2)) + 8;
+      const hb = Math.round(headerBottom(r.left + r.width / 2));
+      let top = hb + 8;
+      if (at) {
+        // Keep what can be seen (the logo alone, when shrunk) inside the window.
+        const logo = toggle.querySelector(".dsa-logo");
+        const shrunk = toggle.classList.contains("dsa-mini") && logo;
+        const box = { ox: shrunk ? logo.offsetLeft : 0, oy: shrunk ? logo.offsetTop : 0,
+                      w: shrunk ? logo.offsetWidth : toggle.offsetWidth, h: shrunk ? logo.offsetHeight : Math.min(toggle.offsetHeight, 160) };
+        left = Math.min(Math.max(at.x, 4 - box.ox), innerWidth - box.ox - box.w - 4);
+        top = Math.min(Math.max(at.y, hb + 4 - box.oy), innerHeight - box.oy - box.h - 4);
+      }
+      toggle.style.left = left + "px";
+      if (inline && !at) toggle.style.maxWidth = Math.min(360, innerWidth - left - 8) + "px";
       toggle.style.top = top + "px";
       // Scrolls inside only when it's taller than the room left (e.g. the brand list is open).
       toggle.style.maxHeight = (innerHeight - top - 8) + "px";
@@ -1914,6 +2135,7 @@
       toggle.classList.add("dsa-float");
       const shift = before - edge();
       if (Math.abs(shift) > 0.5) spot.style.height = (height + shift) + "px";
+      if (!inlineNow() && panelAt) spot.style.height = "0px";     // dragged away: the left column closes up
       mini();
       place();
     };
@@ -1924,6 +2146,7 @@
       return top + toggle.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
     };
     const check = () => {
+      if (!inlineNow() && panelAt) { if (!toggle.classList.contains("dsa-float")) float(); else place(); return; }
       const floating = toggle.classList.contains("dsa-float"), bottom = placeBottom();
       if (floating && bottom > 0) dock();
       else if (!floating && bottom < -8) float();
@@ -1937,6 +2160,26 @@
       ticking = true;
       requestAnimationFrame(() => { ticking = false; check(); });
     }, { passive: true });
+    // Desktop: drag the box by any part that isn't a control; double-click it to put it back in its place.
+    const controls = "input, button, a, label, select, textarea, summary, details, .dsa-scan, .dsa-pref, .dsa-switch, .dsa-update";
+    draggable(toggle, {
+      can: e => !inlineNow() && !e.target.closest(controls),
+      start: () => { const b = toggle.getBoundingClientRect(); return { x: b.left, y: b.top }; },
+      move: (x, y) => { panelAt = { x, y }; if (!toggle.classList.contains("dsa-float")) float(); else place(); },
+      end: () => { const b = toggle.getBoundingClientRect(); panelAt = { x: Math.round(b.left), y: Math.round(b.top) }; storeSet(KEY_PANEL_AT, panelAt); },
+    });
+    toggle.addEventListener("dblclick", e => {
+      if (inlineNow() || !panelAt || e.target.closest(controls)) return;
+      panelAt = null; storeSet(KEY_PANEL_AT, null);
+      dock(); check();
+    });
+    // Phones: drag the floating box by its logo.
+    draggable(toggle.querySelector(".dsa-logo"), {
+      can: () => inlineNow() && toggle.classList.contains("dsa-float"),
+      start: () => { const b = toggle.getBoundingClientRect(); return { x: b.left, y: b.top }; },
+      move: (x, y) => { logoAt = { x, y }; place(); },
+      end: () => { const b = toggle.getBoundingClientRect(); logoAt = { x: Math.round(b.left), y: Math.round(b.top) }; storeSet(KEY_LOGO_AT, logoAt); },
+    });
     // Opening the brand list makes the box taller.
     new MutationObserver(() => requestAnimationFrame(place)).observe(toggle, { attributes: true, subtree: true, attributeFilter: ["hidden", "open"] });
   }
@@ -2030,8 +2273,12 @@
   }
 
   migrateOldSettings().then(() => Promise.all([storeGet(KEY_ENABLED, false), storeGet(KEY_MEMORY, null),
-    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false), storeGet(KEY_SCAN_FOLD_VER, ""), storeGet(KEY_PRIME, false), storeGet(KEY_ECO, false), storeGet(KEY_UPDATE, null)]))
-    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold, foldVer, prime, eco, upd]) => {
+    storeGet(KEY_SORT, null), storeGet(KEY_FEATURED_FOR, ""), storeGet(KEY_LISTINGS, {}), storeGet(KEY_LAST_CLICK, null), storeGet(KEY_PRICES, {}), storeGet(KEY_PRICE_USAGE, null), storeGet(KEY_SCAN_FOLD, false), storeGet(KEY_SCAN_FOLD_VER, ""), storeGet(KEY_PRIME, false), storeGet(KEY_ECO, false), storeGet(KEY_UPDATE, null), storeGet(KEY_PDP_TIDY, true), storeGet(KEY_PDP_BUG, null), storeGet(KEY_PANEL_AT, null), storeGet(KEY_LOGO_AT, null)]))
+    .then(([on, mem, choice, featured, seen, clicked, priceCache, use, fold, foldVer, prime, eco, upd, pdp, bugAt, pAt, lAt]) => {
+    const okAt = a => a && Number.isFinite(a.x) && Number.isFinite(a.y) ? a : null;
+    panelAt = okAt(pAt); logoAt = okAt(lAt);
+    pdpTidy = pdp !== false;
+    pdpBugAt = bugAt && Number.isFinite(bugAt.x) && Number.isFinite(bugAt.y) ? bugAt : null;
     if (upd && typeof upd === "object") update = Object.assign(update, upd);
     hasPrime = prime === true; showEco = eco === true;
     // The scan box starts folded after each install or update; opening or folding it is then kept.
@@ -2045,6 +2292,14 @@
     memory = MEMORY.sanitize(mem);
     listings = seen && typeof seen === "object" ? seen : {};
     refreshLearned();
+    if (isCartPage(location)) {
+      // The cart redraws itself (quantities, saved for later): mark the offers again after each change.
+      let timer = null;
+      new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(tidyCart, 400); })
+        .observe(document.body, { childList: true, subtree: true });
+      tidyCart();
+      return;
+    }
     if (PRODUCT.isProductPage(location)) {
       // Picking another colour or size swaps the product in place (new ASIN in the address, no reload).
       let lastPath = location.pathname;
@@ -2054,6 +2309,7 @@
         timer = setTimeout(() => {
           const panelGone = enabled && !document.getElementById("dsa-product");
           if (location.pathname !== lastPath || panelGone) { lastPath = location.pathname; runProductPage(false); }
+          else tidyProductPage();     // delivery lines and sign-up boxes arrive late, and change with the variant
         }, 600);
       }).observe(document.body, { childList: true, subtree: true });
       runProductPage(false);
