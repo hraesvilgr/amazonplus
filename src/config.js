@@ -71,13 +71,16 @@ var DSA_CONFIG = {
     over3000Reviews: 8,
     tooPerfect: -5,
     lowRating: -6,
-    newListing: -4,
+    newListing: -8,
     sharedReviewPool: -8,
     sharedImage: -12,
-    asinVintage: 10,      // listing 10+ years old (ASIN B00…)
-    asinOld: 6,           // ~2015–2018
-    asinRecent: 2,        // ~2018–2020
-    asinNew: -4,          // created in the last year or so
+    // Listing age (from the ASIN in search results; from "Date First Available" on product pages)
+    asinPre2014: 20,      // before ~2014 (ASIN B000…–B00H…)
+    asin2014: 12,         // ~2014–2017 (B00I…–B06…)
+    asin2018: 8,          // ~2018–2019 (B07…)
+    asin2020: 4,          // ~2020–2022 (B08…–B0B…)
+                          // ~2023–2024 (B0C…–B0E…): 0
+    asinNew: -8,          // created in the last year or so (B0F… onward)
     cheapOutlier: 0,      // off: on pages mixing accessories with main products (or sorted by price) it was noise
     // Brands you rated from the badge (replace the normal brand points)
     userTrusted: 25,

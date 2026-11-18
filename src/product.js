@@ -171,9 +171,10 @@
     // 2. Exact listing date, when Amazon shows it, instead of the estimate from the product ID.
     const first = parseDate(product.dateFirstAvailable);
     if (first) {
-      const years = (now - first.getTime()) / (365.25 * 864e5);
-      const pts = years >= 10 ? W.asinVintage : years >= 5 ? W.asinOld : years >= 2 ? W.asinRecent :
-                  years < 0.25 ? PW.veryNew : years < 1 ? W.asinNew : 0;
+      const years = (now - first.getTime()) / (365.25 * 864e5), y = first.getFullYear();
+      // The same bands as the ID estimate, by the year it was listed; recent ones by how long ago.
+      const pts = years < 0.25 ? PW.veryNew : years < 1 ? W.asinNew :
+                  y < 2014 ? W.asinPre2014 : y <= 2017 ? W.asin2014 : y <= 2019 ? W.asin2018 : y <= 2022 ? W.asin2020 : 0;
       const label = years >= 1 ? `${Math.floor(years)} year${Math.floor(years) === 1 ? "" : "s"}` : `${Math.max(1, Math.round(years * 12))} month${Math.round(years * 12) === 1 ? "" : "s"}`;
       replace("age", pts ? [{ pts, text: `On Amazon since ${product.dateFirstAvailable} (${label})` }] : [],
         () => `Listing date confirmed: ${product.dateFirstAvailable}`);

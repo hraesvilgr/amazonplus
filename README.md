@@ -88,7 +88,7 @@ Scoring reads everything from the results page itself — no product pages are f
 | Brand name is unpronounceable (Pavsrmy, Yupjlia, Cadpxs, ABuff). Pronounceable invented names can't be told from real foreign brands (Suzuki, Xiaomi) by spelling, so those are judged on the other evidence | −18 |
 | Unrecognized brand | −6 |
 | Your Trust / Block vote | +25 / −40 |
-| Listing age from its ASIN: B00… (10+ years) / B01–B06 (~2015–18) / B07–B08 (~2018–20) / B0F+ (last year) | +10 / +6 / +2 / −4 |
+| Listing age from its ASIN (or Date First Available on product pages): before ~2014 (B000–B00H) / ~2014–17 (B00I–B06) / ~2018–19 (B07) / ~2020–22 (B08–B0B) / ~2023–24 (B0C–B0E) / last year or so (B0F+) | +20 / +12 / +8 / +4 / 0 / −8 |
 | Learned trusted / learned junk | +10 / −20 |
 | No brand named at all | −10 |
 | Title length over 120 / 150 / 200 characters (under 90 earns +3) | −3 / −6 / −10 |
@@ -106,7 +106,7 @@ Scoring reads everything from the results page itself — no product pages are f
 | 200+ / 1,000+ / 3,000+ reviews | +3 / +6 / +8 |
 | 4.9★+ on fewer than 30 reviews | −5 |
 | Under 4.0★ on 20+ reviews | −6 |
-| New on Amazon this month | −4 |
+| New on Amazon this month | −8 |
 | Exact review count shared with other listings that aren't the same brand's variants | −8 |
 | Main photo reused by a different brand's listing (one brand's variants sharing a photo is fine) | −12 |
 | Priced under 45% of the page median | −4 |

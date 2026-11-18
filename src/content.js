@@ -1089,6 +1089,8 @@
   //   o.move(x, y) while dragging; o.end(x, y) once, at the end.
   function draggable(handle, o) {
     let st = null;
+    // The browser's own drag-and-drop (of an image or a link underneath) would take the pointer away.
+    const noNativeDrag = e => { if (st) e.preventDefault(); };
     // Moves are followed on the whole page: a quick first move can already be off the handle.
     const move = e => {
       if (!st || e.pointerId !== st.id) return;
@@ -1108,6 +1110,7 @@
       document.removeEventListener("pointermove", move, true);
       document.removeEventListener("pointerup", end, true);
       document.removeEventListener("pointercancel", end, true);
+      document.removeEventListener("dragstart", noNativeDrag, true);
       if (!was.on) return;
       delete handle.dataset.dragging;
       handle.dataset.dragged = "1";
@@ -1117,6 +1120,7 @@
     handle.addEventListener("pointerdown", e => {
       if (e.button !== 0 || (o.can && !o.can(e))) return;
       st = { x: e.clientX, y: e.clientY, id: e.pointerId, on: false };
+      document.addEventListener("dragstart", noNativeDrag, true);
       document.addEventListener("pointermove", move, true);
       document.addEventListener("pointerup", end, true);
       document.addEventListener("pointercancel", end, true);

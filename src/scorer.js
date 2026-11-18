@@ -399,9 +399,10 @@
     // Listing age. Amazon hands out product IDs (ASINs) in sequence, so the ID dates the listing.
     // Throwaway sellers churn new listings; long-running products keep their old ones.
     const era = asinEra(l.asin);
-    if (era === "vintage") add(reasons, W.asinVintage, "Listed on Amazon for 10+ years", "age");
-    else if (era === "old") add(reasons, W.asinOld, "Listed on Amazon since ~2015–2018", "age");
-    else if (era === "recent") add(reasons, W.asinRecent, "Listed on Amazon since ~2018–2020", "age");
+    if (era === "pre2014") add(reasons, W.asinPre2014, "Listed on Amazon since before ~2014", "age");
+    else if (era === "2014") add(reasons, W.asin2014, "Listed on Amazon since ~2014–2017", "age");
+    else if (era === "2018") add(reasons, W.asin2018, "Listed on Amazon since ~2018–2019", "age");
+    else if (era === "2020") add(reasons, W.asin2020, "Listed on Amazon since ~2020–2022", "age");
     else if (era === "new") add(reasons, W.asinNew, "Listing created in the last year or so", "age");
 
     // Price far below the page median
@@ -415,12 +416,13 @@
   // Rough age of a listing from its ASIN (B00… oldest, B0H… newest). Books (ISBNs) return null.
   function asinEra(asin) {
     if (!asin || !/^B0[0-9A-Z]{8}$/.test(asin)) return null;
-    const c = asin[2];
-    if (c === "0") return "vintage";                 // B00…: before ~2015
-    if (c >= "1" && c <= "6") return "old";          // B01…–B06…: ~2015–2018
-    if (c === "7" || c === "8") return "recent";     // B07…, B08…: ~2018–2020
+    const c = asin[2], d = asin[3];
+    if (c === "0") return d <= "H" ? "pre2014" : "2014";  // B000…–B00H…: before ~2014; B00I…–B00Z…: ~2014–2015
+    if (c >= "1" && c <= "6") return "2014";         // B01…–B06…: ~2015–2017
+    if (c === "7") return "2018";                    // B07…: ~2018–2019 (from mid-2017)
+    if (c === "8" || c === "9" || c === "A" || c === "B") return "2020";  // B08…–B0B…: ~2020–2022
     if (c >= "F") return "new";                      // B0F…, B0G…, B0H…: 2025 onward
-    return "mid";                                    // B09…, B0B…–B0D…: 2021–2024
+    return "mid";                                    // B0C…–B0E…: ~2023–2024 (no points)
   }
 
   // Amazon's unit price, e.g. "($0.13/count)", "($2.99/ounce)", "($1.01/feet)", "($0.16/fluid ounce)".

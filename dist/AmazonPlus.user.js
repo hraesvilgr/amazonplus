@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AmazonPlus
 // @namespace    disenshittify-amazon
-// @version      0.15.0
+// @version      0.15.1
 // @description  Rates Amazon search results by trustworthiness, tints them green to red, and sorts the junk to the bottom.
 // @match        https://www.amazon.com/s*
 // @match        https://amazon.com/s*
@@ -109,13 +109,16 @@ globalThis.DSA_CONFIG = {
     over3000Reviews: 8,
     tooPerfect: -5,
     lowRating: -6,
-    newListing: -4,
+    newListing: -8,
     sharedReviewPool: -8,
     sharedImage: -12,
-    asinVintage: 10,      // listing 10+ years old (ASIN B00\u2026)
-    asinOld: 6,           // ~2015\u20132018
-    asinRecent: 2,        // ~2018\u20132020
-    asinNew: -4,          // created in the last year or so
+    // Listing age (from the ASIN in search results; from "Date First Available" on product pages)
+    asinPre2014: 20,      // before ~2014 (ASIN B000\u2026\u2013B00H\u2026)
+    asin2014: 12,         // ~2014\u20132017 (B00I\u2026\u2013B06\u2026)
+    asin2018: 8,          // ~2018\u20132019 (B07\u2026)
+    asin2020: 4,          // ~2020\u20132022 (B08\u2026\u2013B0B\u2026)
+                          // ~2023\u20132024 (B0C\u2026\u2013B0E\u2026): 0
+    asinNew: -8,          // created in the last year or so (B0F\u2026 onward)
     cheapOutlier: 0,      // off: on pages mixing accessories with main products (or sorted by price) it was noise
     // Brands you rated from the badge (replace the normal brand points)
     userTrusted: 25,
@@ -807,9 +810,10 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     // Listing age. Amazon hands out product IDs (ASINs) in sequence, so the ID dates the listing.
     // Throwaway sellers churn new listings; long-running products keep their old ones.
     const era = asinEra(l.asin);
-    if (era === "vintage") add(reasons, W.asinVintage, "Listed on Amazon for 10+ years", "age");
-    else if (era === "old") add(reasons, W.asinOld, "Listed on Amazon since ~2015\u20132018", "age");
-    else if (era === "recent") add(reasons, W.asinRecent, "Listed on Amazon since ~2018\u20132020", "age");
+    if (era === "pre2014") add(reasons, W.asinPre2014, "Listed on Amazon since before ~2014", "age");
+    else if (era === "2014") add(reasons, W.asin2014, "Listed on Amazon since ~2014\u20132017", "age");
+    else if (era === "2018") add(reasons, W.asin2018, "Listed on Amazon since ~2018\u20132019", "age");
+    else if (era === "2020") add(reasons, W.asin2020, "Listed on Amazon since ~2020\u20132022", "age");
     else if (era === "new") add(reasons, W.asinNew, "Listing created in the last year or so", "age");
 
     // Price far below the page median
@@ -823,12 +827,13 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
   // Rough age of a listing from its ASIN (B00\u2026 oldest, B0H\u2026 newest). Books (ISBNs) return null.
   function asinEra(asin) {
     if (!asin || !/^B0[0-9A-Z]{8}$/.test(asin)) return null;
-    const c = asin[2];
-    if (c === "0") return "vintage";                 // B00\u2026: before ~2015
-    if (c >= "1" && c <= "6") return "old";          // B01\u2026\u2013B06\u2026: ~2015\u20132018
-    if (c === "7" || c === "8") return "recent";     // B07\u2026, B08\u2026: ~2018\u20132020
+    const c = asin[2], d = asin[3];
+    if (c === "0") return d <= "H" ? "pre2014" : "2014";  // B000\u2026\u2013B00H\u2026: before ~2014; B00I\u2026\u2013B00Z\u2026: ~2014\u20132015
+    if (c >= "1" && c <= "6") return "2014";         // B01\u2026\u2013B06\u2026: ~2015\u20132017
+    if (c === "7") return "2018";                    // B07\u2026: ~2018\u20132019 (from mid-2017)
+    if (c === "8" || c === "9" || c === "A" || c === "B") return "2020";  // B08\u2026\u2013B0B\u2026: ~2020\u20132022
     if (c >= "F") return "new";                      // B0F\u2026, B0G\u2026, B0H\u2026: 2025 onward
-    return "mid";                                    // B09\u2026, B0B\u2026\u2013B0D\u2026: 2021\u20132024
+    return "mid";                                    // B0C\u2026\u2013B0E\u2026: ~2023\u20132024 (no points)
   }
 
   // Amazon's unit price, e.g. "($0.13/count)", "($2.99/ounce)", "($1.01/feet)", "($0.16/fluid ounce)".
@@ -1251,9 +1256,10 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     // 2. Exact listing date, when Amazon shows it, instead of the estimate from the product ID.
     const first = parseDate(product.dateFirstAvailable);
     if (first) {
-      const years = (now - first.getTime()) / (365.25 * 864e5);
-      const pts = years >= 10 ? W.asinVintage : years >= 5 ? W.asinOld : years >= 2 ? W.asinRecent :
-                  years < 0.25 ? PW.veryNew : years < 1 ? W.asinNew : 0;
+      const years = (now - first.getTime()) / (365.25 * 864e5), y = first.getFullYear();
+      // The same bands as the ID estimate, by the year it was listed; recent ones by how long ago.
+      const pts = years < 0.25 ? PW.veryNew : years < 1 ? W.asinNew :
+                  y < 2014 ? W.asinPre2014 : y <= 2017 ? W.asin2014 : y <= 2019 ? W.asin2018 : y <= 2022 ? W.asin2020 : 0;
       const label = years >= 1 ? `${Math.floor(years)} year${Math.floor(years) === 1 ? "" : "s"}` : `${Math.max(1, Math.round(years * 12))} month${Math.round(years * 12) === 1 ? "" : "s"}`;
       replace("age", pts ? [{ pts, text: `On Amazon since ${product.dateFirstAvailable} (${label})` }] : [],
         () => `Listing date confirmed: ${product.dateFirstAvailable}`);
@@ -1530,7 +1536,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
   const KEY_SCAN_FOLD_VER = "dsaScanFoldVer"; // the version that fold choice was made in (new version: folded again)
   // This version: written in by the userscript build; the add-on reads it from its manifest.
   const VERSION = (() => {
-    const built = "0.15.0";
+    const built = "0.15.1";
     if (!/^__/.test(built)) return built;
     try { return chrome.runtime.getManifest().version; } catch (e) { return ""; }
   })();
@@ -2586,6 +2592,8 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
   //   o.move(x, y) while dragging; o.end(x, y) once, at the end.
   function draggable(handle, o) {
     let st = null;
+    // The browser's own drag-and-drop (of an image or a link underneath) would take the pointer away.
+    const noNativeDrag = e => { if (st) e.preventDefault(); };
     // Moves are followed on the whole page: a quick first move can already be off the handle.
     const move = e => {
       if (!st || e.pointerId !== st.id) return;
@@ -2605,6 +2613,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
       document.removeEventListener("pointermove", move, true);
       document.removeEventListener("pointerup", end, true);
       document.removeEventListener("pointercancel", end, true);
+      document.removeEventListener("dragstart", noNativeDrag, true);
       if (!was.on) return;
       delete handle.dataset.dragging;
       handle.dataset.dragged = "1";
@@ -2614,6 +2623,7 @@ if (typeof module !== 'undefined') module.exports = DSA_BIGRAMS;
     handle.addEventListener("pointerdown", e => {
       if (e.button !== 0 || (o.can && !o.can(e))) return;
       st = { x: e.clientX, y: e.clientY, id: e.pointerId, on: false };
+      document.addEventListener("dragstart", noNativeDrag, true);
       document.addEventListener("pointermove", move, true);
       document.addEventListener("pointerup", end, true);
       document.addEventListener("pointercancel", end, true);
